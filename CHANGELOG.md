@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Opt-in compound tool registration mode (`WORD_MCP_TOOL_MODE=compound`) exposing a 9-tool hybrid surface (`build_document`, `create_from_markdown`, `batch_add_content`, plus `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, and `word_property`) to reduce tool-schema context overhead for clients with strict tool-count limits.
+- Built-in `action="help"` schema inspection, `difflib` close-match suggestions for unknown actions/parameters, required/optional parameter listings, and Pydantic-backed parameter type validation/coercion in compound tools.
+- Actionable `hint` guidance in document validator error responses (`_validate_docx_path`, `_validate_docx_path_shallow`, `validate_file_write`, `validate_docx_write`, `check_file_writeable`).
+
+### Fixed
+- Reordered `ExceptionTool.EXCEPTION_MAPPING` so `FileNotFoundError` and `PermissionError` precede `IOError` and `OSError`, preventing inheritance shadowing.
 
 ---
 
