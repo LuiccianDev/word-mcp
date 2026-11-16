@@ -79,7 +79,7 @@ def check_file_writeable(param_name: str) -> Callable[[F], F]:
 
                 ok, error_msg = _check_file_writeable(value)
                 if not ok:
-                    return {"error": f"Cannot write to file: {error_msg}"}
+                    return _writeable_error_response(error_msg)
 
                 return await func(*args, **kwargs)
 
@@ -95,7 +95,7 @@ def check_file_writeable(param_name: str) -> Callable[[F], F]:
 
                 ok, error_msg = _check_file_writeable(value)
                 if not ok:
-                    return {"error": f"Cannot write to file: {error_msg}"}
+                    return _writeable_error_response(error_msg)
 
                 return func(*args, **kwargs)
 
@@ -159,25 +159,66 @@ def _get_argument_value(
     return None
 
 
+def _writeable_error_response(error_msg: str) -> dict[str, str]:
+    """Build a structured write-permission error payload with an actionable hint."""
+    return {
+        "error": f"Cannot write to file: {error_msg}",
+        "hint": (
+            "Ensure the file is not open in Microsoft Word, verify write permissions, "
+            "and check that the target directory exists and is within MCP_ALLOWED_DIRECTORIES."
+        ),
+    }
+
+
+def _validate_docx_path_basic(path: Path) -> dict[str, str] | None:
+    """Validate existence and .docx extension with actionable hints."""
+    if not path.exists():
+        return {
+            "error": f"File '{path}' does not exist.",
+            "hint": (
+                "Verify the path with list_available_documents, or create the document "
+                "first using create_document or build_document."
+            ),
+        }
+
+    if path.suffix.lower() != ".docx":
+        return {
+            "error": f"File '{path}' is not a .docx document.",
+            "hint": (
+                "Provide a path ending in '.docx'. Legacy '.doc' files must be "
+                "converted to '.docx' before editing."
+            ),
+        }
+
+    return None
+
+
 # helper function to validate a .docx file path of validate_docx_file decorator
 def _validate_docx_path(path_str: str) -> dict[str, str] | None:
     """Performs validation checks on a given .docx file path."""
-
     path = Path(path_str).resolve()
-
-    if not path.exists():
-        return {"error": f"File '{path}' does not exist."}
-
-    if path.suffix.lower() != ".docx":
-        return {"error": f"File '{path}' is not a .docx document."}
+    if error := _validate_docx_path_basic(path):
+        return error
 
     try:
         # Check if the file is a valid Word document by trying to open it.
         Document(str(path))
     except PackageNotFoundError:
-        return {"error": f"File '{path}' is not a valid Word document (.docx)."}
+        return {
+            "error": f"File '{path}' is not a valid Word document (.docx).",
+            "hint": (
+                "The file may be corrupt, encrypted, or a non-.docx format renamed "
+                "with a .docx extension. If encrypted, unprotect it first."
+            ),
+        }
     except Exception as e:
-        return {"error": f"Could not open document: {e}"}
+        return {
+            "error": f"Could not open document: {e}",
+            "hint": (
+                "Ensure the file is not locked by Microsoft Word or another process "
+                "and that you have read permissions."
+            ),
+        }
 
     return None
 
@@ -266,7 +307,7 @@ def validate_docx_write(param_name: str) -> Callable[[F], F]:
 
                 ok, error_msg = _check_file_writeable(path_value)
                 if not ok:
-                    return {"error": f"Cannot write to file: {error_msg}"}
+                    return _writeable_error_response(error_msg)
 
                 return await func(*args, **kwargs)
 
@@ -284,7 +325,7 @@ def validate_docx_write(param_name: str) -> Callable[[F], F]:
 
                 ok, error_msg = _check_file_writeable(path_value)
                 if not ok:
-                    return {"error": f"Cannot write to file: {error_msg}"}
+                    return _writeable_error_response(error_msg)
 
                 return func(*args, **kwargs)
 
@@ -304,15 +345,7 @@ def _validate_docx_path_shallow(path_str: str) -> dict[str, str] | None:
     This is useful for tools that handle encrypted files (e.g. ``unprotect_document``)
     where ``Document()`` would fail because the content is encrypted.
     """
-    path = Path(path_str).resolve()
-
-    if not path.exists():
-        return {"error": f"File '{path}' does not exist."}
-
-    if path.suffix.lower() != ".docx":
-        return {"error": f"File '{path}' is not a .docx document."}
-
-    return None
+    return _validate_docx_path_basic(Path(path_str).resolve())
 
 
 def validate_file_write(param_name: str) -> Callable[[F], F]:
@@ -348,7 +381,7 @@ def validate_file_write(param_name: str) -> Callable[[F], F]:
 
                 ok, error_msg = _check_file_writeable(path_value)
                 if not ok:
-                    return {"error": f"Cannot write to file: {error_msg}"}
+                    return _writeable_error_response(error_msg)
 
                 return await func(*args, **kwargs)
 
@@ -366,7 +399,7 @@ def validate_file_write(param_name: str) -> Callable[[F], F]:
 
                 ok, error_msg = _check_file_writeable(path_value)
                 if not ok:
-                    return {"error": f"Cannot write to file: {error_msg}"}
+                    return _writeable_error_response(error_msg)
 
                 return func(*args, **kwargs)
 

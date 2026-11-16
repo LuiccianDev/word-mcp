@@ -104,3 +104,14 @@ To preserve compute quotas and prevent unnecessary runner execution in GitHub Ac
    - Active developments not yet published with a git tag must be recorded under `## [Unreleased]`.
 3. **Atomic 1-Click Releases:**
    - Do not perform manual version tagging or ad-hoc PyPI publishing. Use the automated workflow `.github/workflows/bump-and-release.yml` with `scripts/bump-version.py` to atomically bump version in `pyproject.toml`, promote changelog notes, create the git tag `v*`, and deploy to PyPI via Trusted Publishing OIDC.
+
+---
+
+## 7. Graphify Knowledge Graph & Token-Saving Protocol
+
+- **Location:** `graphify-out/` (`graph.json`, `GRAPH_REPORT.md`, `graph.html`) and local plugin config in `.agents/plugins/graphify/`.
+- **When to Use:** Query Graphify MCP tools (`query_graph`, `get_node`, `get_neighbors`, `shortest_path`, `god_nodes`) or inspect `graphify-out/GRAPH_REPORT.md` before performing broad recursive searches.
+- **Maintenance:** Update deterministically with zero API token cost after modifying code in `src/word_mcp/` or `docs/`:
+  ```powershell
+  uvx --from graphifyy graphify update .
+  ```

@@ -3,6 +3,8 @@
 This document provides a comprehensive reference for all tools available in the Word MCP server. These tools allow you to create, modify, and manage Word documents programmatically.
 
 > **Note:** Tool names are descriptive and do not use a namespace prefix (for example, `create_document`).
+>
+> **Compound Mode:** Set `WORD_MCP_TOOL_MODE=compound` to replace the 40 granular tools with 9 tools (`build_document`, `create_from_markdown`, `batch_add_content`, `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) for clients with limited tool slots or context budgets.
 
 ## Table of Contents
 

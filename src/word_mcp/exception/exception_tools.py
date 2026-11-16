@@ -45,14 +45,7 @@ class ExceptionTool:
             "error_type": "validation",
             "recoverable": False,
         },
-        IOError: {
-            "error_type": "file_operation",
-            "recoverable": True,
-        },
-        OSError: {
-            "error_type": "file_operation",
-            "recoverable": True,
-        },
+        # Specific OSError subclasses must precede OSError/IOError in insertion order.
         FileNotFoundError: {
             "error_type": "file_not_found",
             "recoverable": False,
@@ -60,6 +53,14 @@ class ExceptionTool:
         PermissionError: {
             "error_type": "permission_denied",
             "recoverable": False,
+        },
+        IOError: {
+            "error_type": "file_operation",
+            "recoverable": True,
+        },
+        OSError: {
+            "error_type": "file_operation",
+            "recoverable": True,
         },
     }
 
