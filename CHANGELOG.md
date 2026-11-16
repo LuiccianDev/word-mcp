@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Opt-in compound tool registration mode (`WORD_MCP_TOOL_MODE=compound`) exposing a 9-tool hybrid surface (`build_document`, `create_from_markdown`, `batch_add_content`, plus `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, and `word_property`) to reduce tool-schema context overhead for clients with strict tool-count limits.
+
 ---
 
 ## [2.0.2] - 2026-11-10

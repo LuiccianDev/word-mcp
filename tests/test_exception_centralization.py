@@ -200,3 +200,17 @@ class TestExceptionCentralization:
         assert "word_mcp.core.exceptions" not in sys.modules
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module("word_mcp.core.exceptions")
+
+
+def test_oserror_subclasses_not_shadowed_by_oserror():
+    fnf_info = ExceptionTool.get_error_info(FileNotFoundError("missing.docx"))
+    assert fnf_info["error_type"] == "file_not_found"
+    assert fnf_info["recoverable"] is False
+
+    perm_info = ExceptionTool.get_error_info(PermissionError("locked.docx"))
+    assert perm_info["error_type"] == "permission_denied"
+    assert perm_info["recoverable"] is False
+
+    os_info = ExceptionTool.get_error_info(OSError("generic io"))
+    assert os_info["error_type"] == "file_operation"
+    assert os_info["recoverable"] is True

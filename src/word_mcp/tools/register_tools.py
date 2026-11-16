@@ -2,6 +2,7 @@
 Register all tools with the MCP server.
 """
 
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -17,10 +18,28 @@ from word_mcp.tools import (
     property_tools,
     protection_tools,
 )
+from word_mcp.tools.compound_tools import register_compound_tools
+
+
+_VALID_TOOL_MODES = ("granular", "compound")
+
+
+def get_tool_mode() -> str:
+    """Return validated tool registration mode from WORD_MCP_TOOL_MODE."""
+    mode = os.environ.get("WORD_MCP_TOOL_MODE", "granular").strip().lower()
+    if mode not in _VALID_TOOL_MODES:
+        valid = ", ".join(_VALID_TOOL_MODES)
+        raise ValueError(
+            f"Invalid WORD_MCP_TOOL_MODE={mode!r}. Expected one of: {valid}"
+        )
+    return mode
 
 
 def register_all_tools(mcp: FastMCP) -> None:
-    """Register all tools with the MCP server."""
+    """Register tools with the MCP server according to WORD_MCP_TOOL_MODE."""
+    if get_tool_mode() == "compound":
+        register_compound_tools(mcp)
+        return
 
     read_only = ToolAnnotations(readOnlyHint=True)
     write = ToolAnnotations(readOnlyHint=False)
