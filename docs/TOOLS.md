@@ -948,4 +948,4 @@ To get the next page, call the tool again with `page = 2`.
 ---
 
 *Last updated: November 2026*
-*Version: 2.0.2*
+*Version: 2.1.0*
