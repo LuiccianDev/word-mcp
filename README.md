@@ -209,61 +209,12 @@ The repository provides 3 modular, specialized skills in `skills/` for LLMs:
 
 ---
 
-## Project Structure
-
-```text
-src/
-└── word_mcp/
-    ├── core/
-    │   ├── batch.py            # Single-pass builder, callouts, and markdown parser
-    │   ├── content.py          # Headings, paragraphs, tables, pictures, TOC
-    │   ├── document.py         # Lifecycle, text search, PDF conversion
-    │   ├── document_context.py # Read/write document context manager
-    │   ├── footnotes.py        # Footnotes and endnotes
-    │   ├── formatting.py       # Text and table formatting
-    │   ├── headers_footers.py  # Headers, footers, page layout
-    │   ├── links.py            # Hyperlinks and bookmarks
-    │   ├── properties.py       # Core properties and section layout
-    │   ├── protection.py       # Encryption and protection metadata
-    │   ├── styles.py           # Style presets and helpers
-    │   └── tables.py           # Table helpers
-    ├── exception/              # Typed errors and error responses
-    ├── models/                 # Pydantic response models
-    ├── tools/                  # Registered MCP tools
-    │   ├── batch_tools.py
-    │   ├── compound_tools.py   # 6 action-dispatched domain tools
-    │   ├── content_tools.py
-    │   ├── document_tools.py
-    │   ├── footnote_tools.py
-    │   ├── format_tools.py
-    │   ├── property_tools.py
-    │   ├── protection_tools.py
-    │   └── register_tools.py
-    ├── utils/                  # Document and security utilities
-    ├── validation/             # Path and file validators
-    ├── server.py               # FastMCP server registration
-    └── __main__.py             # Console entry point
-```
-
----
-
-## Package Distribution & Repository Scope
-
-The distribution boundary between the PyPI package and the repository is strictly defined:
-
-- **PyPI Package (`luiccian-word-mcp`)**: Bundles **exclusively** the runtime code located in [`src/word_mcp/`](src/word_mcp/), accompanied by `README.md`, `LICENSE`, and `pyproject.toml`.
-- **Repository Scope**: Test suites (`tests/`), automation scripts (`scripts/`), agent skills (`skills/`), documentation manuals (`docs/`), and GitHub Actions workflows (`.github/`) belong solely to repository infrastructure and are explicitly excluded from the PyPI wheel and sdist distributions via Hatchling build targets.
-
-> [!NOTE]
-> Installing via `uvx luiccian-word-mcp` or `pip install luiccian-word-mcp` downloads only the core library and runtime dependencies, ensuring zero overhead and rapid startup.
-
----
-
-## Security & Guidelines
+## Security
 
 - **Security Policy**: See [`SECURITY.md`](SECURITY.md) for vulnerability disclosure, protection metadata, and threat modeling.
 - **Rules for AI Assistants**: See [`AGENTS.md`](AGENTS.md) for official development directives, coding standards, and token optimization rules.
 - **Directory Isolation**: Set `WORD_MCP_DIRS` to restrict document operations strictly to designated folders. Path canonicalization prevents directory traversal.
+- **Trusted Publishing**: Tag-driven PyPI releases (`v*.*.*`) use GitHub Actions OIDC and PEP 740 artifact attestation.
 
 ---
 
@@ -287,24 +238,6 @@ uv run mypy src
 # Run test suite
 uv run pytest
 ```
-
-### CI/CD & PyPI Trusted Publishing
-
-The repository includes automated GitHub Actions workflows powered by Astral `uv`:
-
-- **CI (`.github/workflows/ci.yml`)**: Runs tests, lint, and type checks across Python 3.11, 3.12, and 3.13 on Ubuntu. Uses `paths-ignore` and concurrency cancellation to preserve GitHub Actions minutes.
-- **CodeQL Security (`.github/workflows/codeql.yml`)**: Continuous automated security analysis and vulnerability scanning for Python code with GitHub Advanced Security.
-- **Automated Version Bump & PyPI Release (`.github/workflows/bump-and-release.yml`)**: 1-click semantic version bump (`patch`, `minor`, `major`). Updates `pyproject.toml`, `manifest.json`, `CHANGELOG.md`, `docs/TOOLS.md`, and `uv.lock`, validates the quality gate, commits, and pushes the `v*` tag.
-- **Releases (`.github/workflows/release.yml`)**: Triggered on `v*` tags or manually via workflow dispatch. Builds wheel and sdist with `uv build`, auto-extracts release notes from `CHANGELOG.md`, and creates a GitHub Release.
-- **PyPI Publishing (`.github/workflows/publish-pypi.yml`)**: Automated PyPI deployment using **Trusted Publishing (OIDC)** and PEP 740 cryptographic build provenance attestation (`actions/attest-build-provenance@v2`).
-
-| PyPI Trusted Publisher Setting | Value |
-| :--- | :--- |
-| **PyPI Project Name** | `luiccian-word-mcp` |
-| **Owner** | `LuiccianDev` |
-| **Repository name** | `word-mcp` |
-| **Workflow name** | `publish-pypi.yml` |
-| **Environment name** | `pypi` |
 
 ---
 
