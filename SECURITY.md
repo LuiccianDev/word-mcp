@@ -20,7 +20,7 @@ Only the latest major version branch receives active security updates and vulner
 
 ## Security Architecture & Defenses
 
-### 1. Directory Sandboxing (`MCP_ALLOWED_DIRECTORIES`)
+### 1. Directory Sandboxing (`WORD_MCP_DIRS`)
 By default or via configuration, Word MCP limits document reading, writing, and conversions strictly to explicit allowed directories:
 - The server canonicalizes all filesystem paths via `os.path.realpath` and `pathlib.Path.resolve()`.
 - Directory traversal attacks using relative dot-segments (`../`, `..\\`) are detected and blocked with `SecurityError` before any file handle is opened.

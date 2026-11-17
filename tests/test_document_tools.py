@@ -19,14 +19,14 @@ def temp_docx_file(tmp_path: Path) -> Generator[str, None, None]:
     doc.add_paragraph("This is a test document.")
     doc.save(file_path)
     # Set allowed directory for testing
-    os.environ["MCP_ALLOWED_DIRECTORIES"] = str(tmp_path)
+    os.environ["WORD_MCP_DIRS"] = str(tmp_path)
     yield str(file_path)
 
 
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_create_document(tmp_path: Path) -> None:
     """Test creating a new document."""
-    os.environ["MCP_ALLOWED_DIRECTORIES"] = str(tmp_path)
+    os.environ["WORD_MCP_DIRS"] = str(tmp_path)
     file_path = tmp_path / "new_document.docx"
     result = await document_tools.create_document(
         str(file_path), title="Test Title", author="Test Author"
@@ -80,7 +80,7 @@ async def test_read_document_range_by_section_and_empty(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Test reading a section by heading and handling missing sections or empty docs."""
-    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     doc_path = tmp_path / "sections.docx"
     doc = Document()
     doc.add_heading("Intro", level=1)
@@ -127,7 +127,7 @@ async def test_read_document_range_truncates_on_max_chars(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Test max_chars cap sets truncated=True and next_index."""
-    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     doc_path = tmp_path / "large.docx"
     doc = Document()
     for i in range(10):
@@ -149,7 +149,7 @@ async def test_get_document_tables_metadata_and_paginated_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Test table metadata inspection and row pagination."""
-    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     doc_path = tmp_path / "tables.docx"
     doc = Document()
     table = doc.add_table(rows=5, cols=2)

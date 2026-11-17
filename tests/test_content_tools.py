@@ -124,7 +124,7 @@ async def test_batch_edit_document_applies_ops_and_rejects_invalid(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Test atomic multi-operation batch_edit and upfront validation."""
-    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     doc_path = tmp_path / "batch_edit.docx"
     doc = Document()
     doc.add_paragraph("Alpha")

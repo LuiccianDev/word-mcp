@@ -24,7 +24,7 @@ When assisting users or configuring clients (Claude Desktop, Cursor, Cline, Copi
         "command": "uvx",
         "args": ["luiccian-word-mcp"],
         "env": {
-          "MCP_ALLOWED_DIRECTORIES": "/path/to/documents"
+          "WORD_MCP_DIRS": "/path/to/documents"
         }
       }
     }

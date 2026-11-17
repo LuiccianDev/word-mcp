@@ -18,7 +18,7 @@ Use this skill to create complete, visually styled Microsoft Word documents in *
 2. **Never make micro-calls for new documents:**
    - Do NOT chain `create_document` -> `add_heading` -> `add_paragraph` -> `add_table`.
    - Send the entire document structure inside the `elements` array or `markdown_content` in **one call**.
-3. **Always use absolute allowed paths** within `MCP_ALLOWED_DIRECTORIES`.
+3. **Always use absolute allowed paths** within `WORD_MCP_DIRS`.
 
 ## Design Presets
 

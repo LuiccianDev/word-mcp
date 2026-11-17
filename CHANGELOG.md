@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING**: Default tool registration mode is now `compact` (9 tools: `build_document`, `create_from_markdown`, `batch_add_content`, plus the 6 domain tools `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, and `word_property`) instead of 40 granular tools. Set `WORD_MCP_TOOLS=full` (or `granular`) to restore all 40 individual tools.
+- Unified and simplified configuration environment variables across code, Docker, MCPB manifest, and documentation: `WORD_MCP_DIRS` replaces `MCP_ALLOWED_DIRECTORIES`, and `WORD_MCP_TOOLS` (accepting `compact`/`compound` and `full`/`granular`) replaces `WORD_MCP_TOOL_MODE`. Both legacy variable names remain supported as fallbacks for backward compatibility.
+
 ---
 
 ## [2.1.0] - 2026-11-16

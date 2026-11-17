@@ -1,11 +1,12 @@
-"""Opt-in compound tool registrations for Word MCP.
+"""Compact (compound) tool registrations for Word MCP.
 
-When ``WORD_MCP_TOOL_MODE=compound``, these 9 tools replace the 40 granular
-tools: the 3 high-efficiency single-pass tools (``build_document``,
-``create_from_markdown``, ``batch_add_content``) keep their full typed JSON
-schemas, while the remaining 37 atomic tools are consolidated into 6
-action-dispatched domain tools (``word_document``, ``word_content``,
-``word_format``, ``word_protection``, ``word_footnote``, ``word_property``).
+When ``WORD_MCP_TOOLS=compact`` (the default, also aliased as ``compound``),
+these 9 tools replace the 40 full/granular tools: the 3 high-efficiency
+single-pass tools (``build_document``, ``create_from_markdown``,
+``batch_add_content``) keep their full typed JSON schemas, while the remaining
+37 atomic tools are consolidated into 6 action-dispatched domain tools
+(``word_document``, ``word_content``, ``word_format``, ``word_protection``,
+``word_footnote``, ``word_property``).
 """
 
 from __future__ import annotations
