@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Styled GitHub-style callout boxes (`note`, `tip`, `important`, `warning`, `caution`) in `build_document`, `batch_add_content`, and `create_from_markdown` (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) rendered as shaded 1x1 tables with colored left accent borders.
+- Centralized `stderr`-only logging configuration (`LOG_LEVEL` / `WORD_MCP_LOG_LEVEL`) and developer diagnostics mode (`DEV_MODE` / `WORD_MCP_DEV_MODE`).
+
+### Changed
+- Standardized default `WORD_MCP_TOOLS` mode name to `compound` (9 tools) and removed the `compact` tool-mode alias; `full` (or `granular`) remains available for all 40 tools.
+- Streamlined `README.md` to match the concise client configuration and environment variable reference format.
+
+### Removed
+- Removed unused Docker artifacts (`Dockerfile`, `.dockerignore`, `docs/Docker.md`) and untracked `docs/superpowers/`.
+
 ---
 
 ## [3.0.0] - 2026-11-17
