@@ -179,6 +179,63 @@ Texto después del salto de página.
         )
         self.assertEqual(res_bm["status"], "success")
 
+    async def test_build_document_image_and_callout_title(self) -> None:
+        """Test image element with caption and callout title rendering."""
+        import base64
+
+        png_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+        img_path = os.path.join(self.temp_dir.name, "pixel.png")
+        with open(img_path, "wb") as fh:
+            fh.write(png_bytes)
+
+        result = await batch_tools.build_document(
+            filename=self.doc_path,
+            elements=[
+                {"type": "callout", "title": "NOTE", "text": "Important detail"},
+                {
+                    "type": "image",
+                    "path": img_path,
+                    "width": 1.5,
+                    "caption": "Figure 1",
+                    "alignment": "center",
+                },
+            ],
+        )
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["element_counts"]["callout"], 1)
+        self.assertEqual(result["element_counts"]["image"], 1)
+
+        doc = Document(self.doc_path)
+        texts = [p.text for p in doc.paragraphs]
+        self.assertIn("NOTE: Important detail", texts)
+        self.assertIn("Figure 1", texts)
+        self.assertEqual(len(doc.inline_shapes), 1)
+
+        bad = await batch_tools.build_document(
+            filename=self.doc_path,
+            elements=[{"type": "image", "path": img_path, "width": -1}],
+        )
+        self.assertEqual(bad["status"], "error")
+
+    def test_add_inline_formatted_text_hyperlinks(self) -> None:
+        """Test inline markdown [label](url) and [label](#bookmark) hyperlinks."""
+        from docx.oxml.ns import qn
+
+        from word_mcp.core.batch import add_inline_formatted_text
+
+        doc = Document()
+        p = doc.add_paragraph()
+        add_inline_formatted_text(
+            p,
+            "Visit [Word MCP](https://example.com) or [Top](#top_bm) and [Bad]() **bold**.",
+        )
+        hyperlinks = p._p.findall(qn("w:hyperlink"))
+        self.assertEqual(len(hyperlinks), 2)
+        self.assertIn("Visit ", p.text)
+        self.assertIn("[Bad]()", p.text)
+
 
 if __name__ == "__main__":
     unittest.main()

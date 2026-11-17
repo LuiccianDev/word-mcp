@@ -51,7 +51,7 @@ def test_elements_cheatsheet_matches_renderer() -> None:
     assert "Default: `left`" in body
     assert "light background shading" not in body
     assert "always centered" in body
-    assert "does not render `title`" in body
+    assert "title` is rendered as a bold prefix" in body
     assert "indented italic paragraph" in body
 
 

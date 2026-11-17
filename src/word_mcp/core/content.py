@@ -12,6 +12,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
+from docx.text.paragraph import Paragraph
 
 from word_mcp.core.styles import ensure_heading_style
 
@@ -117,21 +118,28 @@ def core_delete_paragraph(doc: DocumentType, paragraph_index: int) -> None:
 
 
 def core_add_table_of_contents(
-    doc: DocumentType, title: str = "Table of Contents", max_level: int = 3
+    doc: DocumentType,
+    title: str = "Table of Contents",
+    max_level: int = 3,
+    page_break: bool = True,
 ) -> dict[str, Any]:
-    """Add a Table of Contents to the document.
-
-    Note: The TOC needs to be updated manually in Word or via a macro.
+    """Add a Table of Contents to the document and mark fields for auto-update.
 
     Args:
         doc: The document object.
         title: Title of the TOC.
-        max_level: Maximum heading level to include.
+        max_level: Maximum heading level to include (1-9).
+        page_break: Whether to insert a page break after the TOC field.
 
     Returns:
         dict: Details of the added TOC.
     """
+    level_clamped = min(max(int(max_level), 1), 9)
     paragraph = doc.add_paragraph()
+    try:
+        paragraph.style = doc.styles["TOC Heading"]
+    except KeyError:
+        pass
     run = paragraph.add_run(title)
     run.bold = True
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -139,13 +147,14 @@ def core_add_table_of_contents(
     paragraph = doc.add_paragraph()
     run = paragraph.add_run()
 
-    # Create the TOC fields
+    # Create the TOC fields with w:dirty="true" so Word updates on open
     fldChar = OxmlElement("w:fldChar")  # noqa: N806
     fldChar.set(qn("w:fldCharType"), "begin")
+    fldChar.set(qn("w:dirty"), "true")
 
     instrText = OxmlElement("w:instrText")  # noqa: N806
     instrText.set(qn("xml:space"), "preserve")
-    instrText.text = f'TOC \\o "1-{max_level}" \\h \\z \\u'
+    instrText.text = f'TOC \\o "1-{level_clamped}" \\h \\z \\u'
 
     fldChar2 = OxmlElement("w:fldChar")  # noqa: N806
     fldChar2.set(qn("w:fldCharType"), "separate")
@@ -158,12 +167,20 @@ def core_add_table_of_contents(
     run._r.append(fldChar2)
     run._r.append(fldChar3)
 
-    doc.add_page_break()
+    # Ensure Word updates TOC and other fields automatically on open
+    settings_el = doc.settings.element
+    if settings_el.find(qn("w:updateFields")) is None:
+        update_fields = OxmlElement("w:updateFields")
+        update_fields.set(qn("w:val"), "true")
+        settings_el.append(update_fields)
+
+    if page_break:
+        doc.add_page_break()
 
     return {
         "title": title,
-        "max_level": max_level,
-        "message": "Table of Contents field added. The document may need manual update in Word to display properly.",
+        "max_level": level_clamped,
+        "message": "Table of Contents field added with automatic field update enabled.",
     }
 
 
@@ -203,3 +220,85 @@ def core_find_and_replace_text(doc: DocumentType, old_text: str, new_text: str) 
                                 replacement_count += 1
 
     return replacement_count
+
+
+_BATCH_EDIT_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
+    "replace_text": ("old_text", "new_text"),
+    "replace_paragraph": ("paragraph_index", "text"),
+    "delete_paragraph": ("paragraph_index",),
+    "insert_after_paragraph": ("paragraph_index", "text"),
+}
+
+
+def core_batch_edit(
+    doc: DocumentType, operations: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Validate and apply multiple edit operations sequentially in one pass.
+
+    Operations execute in order against live ``doc.paragraphs`` indices.
+    """
+    if not isinstance(operations, list) or not operations:
+        raise ValueError("operations must be a non-empty list of edit dictionaries")
+
+    for idx, entry in enumerate(operations):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Operation at index {idx} must be a dict")
+        op_name = entry.get("op")
+        if not isinstance(op_name, str) or op_name not in _BATCH_EDIT_REQUIRED_KEYS:
+            valid = ", ".join(sorted(_BATCH_EDIT_REQUIRED_KEYS))
+            raise ValueError(
+                f"Unknown batch_edit op '{op_name}' at index {idx}. Valid: {valid}"
+            )
+        missing = [k for k in _BATCH_EDIT_REQUIRED_KEYS[op_name] if k not in entry]
+        if missing:
+            raise ValueError(
+                f"Operation '{op_name}' at index {idx} missing required keys: {missing}"
+            )
+        if "paragraph_index" in _BATCH_EDIT_REQUIRED_KEYS[op_name]:
+            p_idx = entry["paragraph_index"]
+            if isinstance(p_idx, bool) or not isinstance(p_idx, int):
+                raise ValueError(
+                    f"Operation '{op_name}' at index {idx} requires an integer paragraph_index"
+                )
+        if op_name == "replace_text" and not entry["old_text"]:
+            raise ValueError(
+                f"Operation 'replace_text' at index {idx} requires non-empty old_text"
+            )
+
+    details: list[dict[str, Any]] = []
+    for entry in operations:
+        op_name = entry["op"]
+        if op_name == "replace_text":
+            count = core_find_and_replace_text(
+                doc, str(entry["old_text"]), str(entry["new_text"])
+            )
+            details.append({"op": op_name, "replacements": count})
+        elif op_name == "replace_paragraph":
+            p_idx = entry["paragraph_index"]
+            if p_idx < 0 or p_idx >= len(doc.paragraphs):
+                raise IndexError(
+                    f"Paragraph index {p_idx} is out of range (0-{len(doc.paragraphs) - 1})"
+                )
+            doc.paragraphs[p_idx].text = str(entry["text"])
+            details.append({"op": op_name, "paragraph_index": p_idx})
+        elif op_name == "delete_paragraph":
+            p_idx = entry["paragraph_index"]
+            core_delete_paragraph(doc, p_idx)
+            details.append({"op": op_name, "paragraph_index": p_idx})
+        elif op_name == "insert_after_paragraph":
+            p_idx = entry["paragraph_index"]
+            total = len(doc.paragraphs)
+            if p_idx < 0 or p_idx >= total:
+                raise IndexError(
+                    f"Paragraph index {p_idx} is out of range (0-{total - 1})"
+                )
+            target_para = doc.paragraphs[p_idx]
+            new_p = OxmlElement("w:p")
+            target_para._p.addnext(new_p)
+            inserted = Paragraph(new_p, target_para._parent)
+            inserted.text = str(entry["text"])
+            if entry.get("style"):
+                inserted.style = str(entry["style"])
+            details.append({"op": op_name, "paragraph_index": p_idx})
+
+    return {"applied_count": len(details), "operations": details}

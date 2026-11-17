@@ -72,6 +72,7 @@ async def build_document(
     footer_text: str | None = None,
     page_numbers: bool = False,
     elements: list[dict[str, Any]] | None = None,
+    page_size: str | None = None,
 ) -> dict[str, Any]:
     """Build a complete Word document with typography, margins, header/footer and content in a single pass.
 
@@ -80,7 +81,7 @@ async def build_document(
         file_path: Alternative alias for filename.
         title: Document title metadata.
         author: Document author metadata.
-        preset: Design preset ('modern', 'formal', 'academic', 'compact').
+        preset: Design preset ('modern', 'formal', 'report', 'academic', 'apa', 'compact').
         font_name: Global font family (e.g. 'Calibri', 'Arial', 'Times New Roman').
         font_size: Global font size in points (e.g. 11.0).
         line_spacing: Paragraph line spacing (e.g. 1.15, 1.5, 2.0).
@@ -90,7 +91,8 @@ async def build_document(
         header_text: Header text displayed at the top of pages.
         footer_text: Footer text displayed at the bottom of pages.
         page_numbers: If True, adds dynamic PAGE numbers to the footer.
-        elements: Sequential list of content blocks (headings, paragraphs, tables, lists, breaks).
+        elements: Sequential list of content blocks (headings, paragraphs, tables, lists, toc, references, title_block, breaks).
+        page_size: Page size ('letter', 'a4', 'legal', 'a5'). Defaults to the selected preset's page size.
 
     Returns:
         Compact summary of the built document.
@@ -116,6 +118,7 @@ async def build_document(
                 footer_text=footer_text,
                 page_numbers=page_numbers,
                 elements=elements,
+                page_size=page_size,
             )
 
         return BuildDocumentResult(
@@ -152,6 +155,7 @@ async def create_from_markdown(
     header_text: str | None = None,
     footer_text: str | None = None,
     page_numbers: bool = False,
+    page_size: str | None = None,
 ) -> dict[str, Any]:
     """Create a styled Word document directly from Markdown text in a single pass.
 
@@ -178,6 +182,7 @@ async def create_from_markdown(
                 header_text=header_text,
                 footer_text=footer_text,
                 page_numbers=page_numbers,
+                page_size=page_size,
             )
 
         return BuildDocumentResult(

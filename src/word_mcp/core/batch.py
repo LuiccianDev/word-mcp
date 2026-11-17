@@ -7,6 +7,7 @@ tables, lists, and headings to be generated in a single pass.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -14,11 +15,19 @@ from docx.document import Document as DocumentType
 from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Cm, Pt, RGBColor
+from docx.shared import Cm, Inches, Pt, RGBColor
+from docx.text.run import Run
 
-from word_mcp.core.styles import ensure_heading_style
+from word_mcp.core.content import core_add_table_of_contents
+from word_mcp.core.presets import (
+    apply_profile_typography,
+    resolve_page_size,
+    resolve_profile,
+)
+from word_mcp.utils.security import is_path_in_allowed_directories
 
 
 ALIGNMENT_MAP = {
@@ -28,36 +37,19 @@ ALIGNMENT_MAP = {
     "justify": WD_ALIGN_PARAGRAPH.JUSTIFY,
 }
 
-PRESETS: dict[str, dict[str, Any]] = {
-    "modern": {
-        "font_name": "Calibri",
-        "font_size": 11.0,
-        "line_spacing": 1.15,
-        "space_after": 6.0,
-        "margins": {"top": 2.5, "bottom": 2.5, "left": 2.5, "right": 2.5},
-    },
-    "formal": {
-        "font_name": "Times New Roman",
-        "font_size": 12.0,
-        "line_spacing": 1.5,
-        "space_after": 6.0,
-        "margins": {"top": 2.5, "bottom": 2.5, "left": 3.0, "right": 2.5},
-    },
-    "academic": {
-        "font_name": "Times New Roman",
-        "font_size": 12.0,
-        "line_spacing": 2.0,
-        "space_after": 0.0,
-        "margins": {"top": 2.54, "bottom": 2.54, "left": 2.54, "right": 2.54},
-    },
-    "compact": {
-        "font_name": "Arial",
-        "font_size": 10.0,
-        "line_spacing": 1.0,
-        "space_after": 4.0,
-        "margins": {"top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0},
-    },
-}
+SUPPORTED_ELEMENT_TYPES = (
+    "heading",
+    "paragraph",
+    "table",
+    "bullet_list",
+    "numbered_list",
+    "page_break",
+    "callout",
+    "image",
+    "toc",
+    "references",
+    "title_block",
+)
 
 
 def apply_page_number_field(paragraph: Any) -> None:
@@ -80,9 +72,10 @@ def apply_document_settings(
     footer_text: str | None = None,
     page_numbers: bool = False,
     preset: str | None = None,
+    page_size: str | None = None,
 ) -> dict[str, Any]:
     """Configure document-wide styles, page setup, header, and footer."""
-    config = dict(PRESETS.get(preset or "modern", PRESETS["modern"]))
+    config = resolve_profile(preset)
 
     if font_name is not None:
         config["font_name"] = font_name
@@ -94,25 +87,27 @@ def apply_document_settings(
         config["space_after"] = space_after
     if margins is not None:
         config["margins"] = margins
+    if page_size is not None:
+        config["page_size"] = page_size
 
-    # Configure Normal style
-    try:
-        normal_style = doc.styles["Normal"]
-        normal_font = normal_style.font
-        normal_font.name = config["font_name"]
-        normal_font.size = Pt(config["font_size"])
+    if orientation is not None and orientation.lower() not in ("portrait", "landscape"):
+        raise ValueError("Orientation must be 'portrait' or 'landscape'")
 
-        p_format = normal_style.paragraph_format
-        p_format.line_spacing = config["line_spacing"]
-        p_format.space_after = Pt(config["space_after"])
-    except (KeyError, AttributeError):
-        pass
+    width, height = resolve_page_size(str(config.get("page_size", "letter")))
+    apply_profile_typography(doc, config)
 
-    # Ensure heading styles exist
-    ensure_heading_style(doc)
-
-    # Configure sections (margins, orientation, headers/footers)
+    # Configure sections (page size, margins, orientation, headers/footers)
     for section in doc.sections:
+        orient = (orientation or "portrait").lower()
+        if orient == "landscape":
+            section.orientation = WD_ORIENT.LANDSCAPE
+            section.page_width = max(width, height)
+            section.page_height = min(width, height)
+        else:
+            section.orientation = WD_ORIENT.PORTRAIT
+            section.page_width = min(width, height)
+            section.page_height = max(width, height)
+
         m = config.get("margins", {})
         if "top" in m:
             section.top_margin = Cm(float(m["top"]))
@@ -122,12 +117,6 @@ def apply_document_settings(
             section.left_margin = Cm(float(m["left"]))
         if "right" in m:
             section.right_margin = Cm(float(m["right"]))
-
-        if orientation == "landscape":
-            section.orientation = WD_ORIENT.LANDSCAPE
-            new_width, new_height = section.page_height, section.page_width
-            section.page_width = new_width
-            section.page_height = new_height
 
         if header_text:
             header_para = section.header.paragraphs[0]
@@ -152,12 +141,39 @@ def apply_document_settings(
     return config
 
 
+_INLINE_LINK_RE = re.compile(r"^\[([^\[\]]+)\]\(([^\s()]+)\)$")
+
+
+def _append_inline_hyperlink(paragraph: Any, label: str, target: str) -> bool:
+    """Append an external or bookmark w:hyperlink to paragraph; return False if invalid."""
+    hyperlink = OxmlElement("w:hyperlink")
+    if target.startswith("#") and len(target) > 1:
+        hyperlink.set(qn("w:anchor"), target[1:].replace(" ", "_"))
+    elif target.startswith(("http://", "https://", "mailto:")):
+        r_id = paragraph.part.relate_to(target, RT.HYPERLINK, is_external=True)
+        hyperlink.set(qn("r:id"), r_id)
+    else:
+        return False
+
+    run = Run(OxmlElement("w:r"), paragraph)
+    run.text = label
+    run.font.color.theme_color = 10
+    run.font.underline = True
+    hyperlink.append(run._r)
+    paragraph._p.append(hyperlink)
+    return True
+
+
 def add_inline_formatted_text(paragraph: Any, text: str) -> None:
-    """Parse inline **bold** and *italic* markdown in paragraph text."""
-    # Pattern to match bold (**text**) or italic (*text*)
-    tokens = re.split(r"(\*\*.*?\*\*|\*.*?\*)", text)
+    """Parse inline [label](url), **bold**, and *italic* markdown in paragraph text."""
+    tokens = re.split(r"(\[[^\[\]]+\]\([^\s()]+\)|\*\*.*?\*\*|\*.*?\*)", text)
     for token in tokens:
         if not token:
+            continue
+        link_match = _INLINE_LINK_RE.match(token)
+        if link_match and _append_inline_hyperlink(
+            paragraph, link_match.group(1), link_match.group(2)
+        ):
             continue
         if token.startswith("**") and token.endswith("**") and len(token) >= 4:
             run = paragraph.add_run(token[2:-2])
@@ -167,6 +183,56 @@ def add_inline_formatted_text(paragraph: Any, text: str) -> None:
             run.italic = True
         else:
             paragraph.add_run(token)
+
+
+def _render_list_items(
+    doc: DocumentType, items: Any, style_name: str, base_level: int = 0
+) -> None:
+    """Render flat or nested list items with dynamic indentation."""
+    if isinstance(items, str):
+        items = [items]
+    for item in items:
+        if isinstance(item, dict):
+            text = str(item.get("text", ""))
+            level = int(item.get("level", base_level))
+            p = doc.add_paragraph(style=style_name)
+            if level > 0:
+                p.paragraph_format.left_indent = Cm(0.63 * level)
+            add_inline_formatted_text(p, text)
+            children = item.get("children")
+            if children:
+                _render_list_items(doc, children, style_name, base_level=level + 1)
+        elif isinstance(item, list):
+            _render_list_items(doc, item, style_name, base_level=base_level + 1)
+        else:
+            p = doc.add_paragraph(style=style_name)
+            if base_level > 0:
+                p.paragraph_format.left_indent = Cm(0.63 * base_level)
+            add_inline_formatted_text(p, str(item))
+
+
+def _format_apa_reference(entry: str | dict[str, Any]) -> str:
+    """Format a plain string or structured citation dictionary in APA 7 style."""
+    if isinstance(entry, str):
+        return entry
+    parts: list[str] = []
+    authors = str(entry.get("authors", "")).strip()
+    year = str(entry.get("year", "")).strip()
+    title = str(entry.get("title", "")).strip()
+    source = str(entry.get("source", "")).strip()
+    doi = str(entry.get("doi") or entry.get("url") or "").strip()
+
+    if authors:
+        parts.append(authors if authors.endswith(".") else f"{authors}.")
+    if year:
+        parts.append(f"({year}).")
+    if title:
+        parts.append(f"*{title}*." if not title.endswith(".") else f"*{title}*")
+    if source:
+        parts.append(source if source.endswith(".") else f"{source}.")
+    if doi:
+        parts.append(doi)
+    return " ".join(parts)
 
 
 def render_element(doc: DocumentType, elem: dict[str, Any]) -> str:
@@ -247,21 +313,11 @@ def render_element(doc: DocumentType, elem: dict[str, Any]) -> str:
         return "table"
 
     elif elem_type in ("bullet_list", "bullet", "list"):
-        items = elem.get("items", [])
-        if isinstance(items, str):
-            items = [items]
-        for item in items:
-            p = doc.add_paragraph(style="List Bullet")
-            add_inline_formatted_text(p, str(item))
+        _render_list_items(doc, elem.get("items", []), "List Bullet")
         return "bullet_list"
 
     elif elem_type in ("numbered_list", "number_list"):
-        items = elem.get("items", [])
-        if isinstance(items, str):
-            items = [items]
-        for item in items:
-            p = doc.add_paragraph(style="List Number")
-            add_inline_formatted_text(p, str(item))
+        _render_list_items(doc, elem.get("items", []), "List Number")
         return "numbered_list"
 
     elif elem_type == "page_break":
@@ -270,17 +326,99 @@ def render_element(doc: DocumentType, elem: dict[str, Any]) -> str:
 
     elif elem_type in ("callout", "quote"):
         text = elem.get("text", "")
+        title = elem.get("title")
         p = doc.add_paragraph()
         p.paragraph_format.left_indent = Cm(1.0)
         p.paragraph_format.right_indent = Cm(1.0)
         p.paragraph_format.space_before = Pt(6)
         p.paragraph_format.space_after = Pt(6)
+        if title:
+            title_run = p.add_run(f"{title}: ")
+            title_run.bold = True
         add_inline_formatted_text(p, text)
         for run in p.runs:
             run.italic = True
         return "callout"
 
-    return "unknown"
+    elif elem_type in ("image", "picture"):
+        raw_path = elem.get("path") or elem.get("image_path")
+        if not raw_path or not isinstance(raw_path, str):
+            raise ValueError("Image element requires a non-empty 'path' string.")
+        abs_path = os.path.abspath(raw_path)
+        allowed, reason = is_path_in_allowed_directories(abs_path)
+        if not allowed:
+            raise ValueError(f"Image path not allowed: {reason}")
+        if not os.path.exists(abs_path):
+            raise FileNotFoundError(f"Image file not found: {abs_path}")
+
+        width = elem.get("width")
+        if width is not None and float(width) <= 0:
+            raise ValueError(f"Image width must be positive, got {width}")
+
+        p = doc.add_paragraph()
+        align_str = str(elem.get("alignment", "center")).lower()
+        if align_str in ALIGNMENT_MAP:
+            p.alignment = ALIGNMENT_MAP[align_str]
+        run = p.add_run()
+        if width is not None:
+            run.add_picture(abs_path, width=Inches(float(width)))
+        else:
+            run.add_picture(abs_path)
+
+        caption = elem.get("caption")
+        if caption:
+            cap_p = doc.add_paragraph()
+            if align_str in ALIGNMENT_MAP:
+                cap_p.alignment = ALIGNMENT_MAP[align_str]
+            cap_run = cap_p.add_run(str(caption))
+            cap_run.italic = True
+            cap_run.font.size = Pt(9.5)
+        return "image"
+
+    elif elem_type == "toc":
+        core_add_table_of_contents(
+            doc,
+            title=str(elem.get("title", "Table of Contents")),
+            max_level=int(elem.get("max_level", 3)),
+            page_break=bool(elem.get("page_break", True)),
+        )
+        return "toc"
+
+    elif elem_type in ("references", "bibliography"):
+        if elem.get("include_heading", True):
+            doc.add_heading(
+                str(elem.get("title", "References")),
+                level=min(max(int(elem.get("level", 1)), 1), 9),
+            )
+        hanging_cm = float(elem.get("hanging_indent_cm", 1.27))
+        for entry in elem.get("items", []):
+            p = doc.add_paragraph()
+            p.paragraph_format.left_indent = Cm(hanging_cm)
+            p.paragraph_format.first_line_indent = Cm(-hanging_cm)
+            add_inline_formatted_text(p, _format_apa_reference(entry))
+        return "references"
+
+    elif elem_type == "title_block":
+        title_text = elem.get("title")
+        if title_text:
+            p_title = doc.add_paragraph(str(title_text), style="Title")
+            p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        subtitle_text = elem.get("subtitle")
+        if subtitle_text:
+            p_sub = doc.add_paragraph(str(subtitle_text), style="Subtitle")
+            p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        meta_parts = [
+            str(elem[k]) for k in ("author", "institution", "date") if elem.get(k)
+        ]
+        if meta_parts:
+            p_meta = doc.add_paragraph(" | ".join(meta_parts))
+            p_meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        return "title_block"
+
+    valid = ", ".join(SUPPORTED_ELEMENT_TYPES)
+    raise ValueError(
+        f"Unknown element type '{elem_type}'. Supported element types: {valid}."
+    )
 
 
 def core_build_document(
@@ -298,6 +436,7 @@ def core_build_document(
     page_numbers: bool = False,
     preset: str | None = None,
     elements: list[dict[str, Any]] | None = None,
+    page_size: str | None = None,
 ) -> dict[str, Any]:
     """Build a complete Word document in memory in a single pass.
 
@@ -323,6 +462,7 @@ def core_build_document(
         footer_text=footer_text,
         page_numbers=page_numbers,
         preset=preset,
+        page_size=page_size,
     )
 
     counts: dict[str, int] = {}
@@ -407,17 +547,35 @@ def parse_markdown_to_elements(markdown_text: str) -> list[dict[str, Any]]:
                 )
                 continue
 
-        # Bullet list
+        # Bullet list (supports nested indentation and groups consecutive items)
         if line.startswith(("- ", "* ", "+ ")):
-            elements.append({"type": "bullet_list", "items": [line[2:].strip()]})
+            indent = len(raw_line) - len(raw_line.lstrip(" \t"))
+            level = indent // 2
+            item_val: str | dict[str, Any] = (
+                {"text": line[2:].strip(), "level": level}
+                if level > 0
+                else line[2:].strip()
+            )
+            if elements and elements[-1]["type"] == "bullet_list":
+                elements[-1]["items"].append(item_val)
+            else:
+                elements.append({"type": "bullet_list", "items": [item_val]})
             continue
 
-        # Numbered list
+        # Numbered list (supports nested indentation and groups consecutive items)
         num_match = re.match(r"^\d+\.\s+(.*)$", line)
         if num_match:
-            elements.append(
-                {"type": "numbered_list", "items": [num_match.group(1).strip()]}
+            indent = len(raw_line) - len(raw_line.lstrip(" \t"))
+            level = indent // 2
+            item_val = (
+                {"text": num_match.group(1).strip(), "level": level}
+                if level > 0
+                else num_match.group(1).strip()
             )
+            if elements and elements[-1]["type"] == "numbered_list":
+                elements[-1]["items"].append(item_val)
+            else:
+                elements.append({"type": "numbered_list", "items": [item_val]})
             continue
 
         # Blockquote / callout
@@ -446,6 +604,7 @@ def core_create_from_markdown(
     footer_text: str | None = None,
     page_numbers: bool = False,
     preset: str | None = None,
+    page_size: str | None = None,
 ) -> dict[str, Any]:
     """Parse Markdown content and build Word document in a single pass."""
     elements = parse_markdown_to_elements(markdown_content)
@@ -463,4 +622,5 @@ def core_create_from_markdown(
         page_numbers=page_numbers,
         preset=preset,
         elements=elements,
+        page_size=page_size,
     )

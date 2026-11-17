@@ -81,4 +81,4 @@ Each element in the `elements` array is a dictionary with a `"type"` property an
   "title": "ATENCIÓN"
 }
 ```
-* The renderer does not render `title`; it renders an indented italic paragraph.
+* When provided, `title` is rendered as a bold prefix (`{title}: `); it renders an indented italic paragraph.

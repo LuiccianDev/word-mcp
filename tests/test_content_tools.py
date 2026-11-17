@@ -117,3 +117,64 @@ async def test_search_and_replace(temp_docx_file: str) -> None:
     result = await content_tools.search_and_replace(temp_docx_file, "test", "sample")
     assert result["status"] == "success"
     assert "Replaced" in result["message"] or "occurrences" in result["message"]
+
+
+@pytest.mark.asyncio  # type: ignore[misc]
+async def test_batch_edit_document_applies_ops_and_rejects_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test atomic multi-operation batch_edit and upfront validation."""
+    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    doc_path = tmp_path / "batch_edit.docx"
+    doc = Document()
+    doc.add_paragraph("Alpha")
+    doc.add_paragraph("Beta")
+    doc.add_paragraph("Gamma")
+    doc.save(doc_path)
+
+    res = await content_tools.batch_edit_document(
+        str(doc_path),
+        operations=[
+            {"op": "replace_text", "old_text": "Alpha", "new_text": "Alpha One"},
+            {"op": "replace_paragraph", "paragraph_index": 1, "text": "Beta Two"},
+            {
+                "op": "insert_after_paragraph",
+                "paragraph_index": 1,
+                "text": "Inserted",
+            },
+            {"op": "delete_paragraph", "paragraph_index": 3},
+        ],
+    )
+    assert res["status"] == "success"
+    assert res["applied_count"] == 4
+
+    updated = Document(doc_path)
+    assert [p.text for p in updated.paragraphs] == [
+        "Alpha One",
+        "Beta Two",
+        "Inserted",
+    ]
+
+    bad = await content_tools.batch_edit_document(
+        str(doc_path),
+        operations=[
+            {"op": "replace_text", "old_text": "Alpha One", "new_text": "Changed"},
+            {"op": "unknown_op"},
+        ],
+    )
+    assert bad["status"] == "error"
+    # Document must remain untouched when upfront validation fails
+    after_bad = Document(doc_path)
+    assert after_bad.paragraphs[0].text == "Alpha One"
+
+    bad_type = await content_tools.batch_edit_document(
+        str(doc_path),
+        operations=[{"op": ["unhashable"]}],
+    )
+    assert bad_type["status"] == "error"
+
+    bad_idx = await content_tools.batch_edit_document(
+        str(doc_path),
+        operations=[{"op": "delete_paragraph", "paragraph_index": None}],
+    )
+    assert bad_idx["status"] == "error"

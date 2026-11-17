@@ -315,3 +315,51 @@ def _get_or_create_tc_borders(tc_properties: Any) -> Any:
         borders = OxmlElement("w:tcBorders")
         tc_properties.append(borders)
     return borders
+
+
+def core_get_tables(
+    doc: Document,
+    table_index: int | None = None,
+    include_rows: bool = False,
+    row_offset: int = 0,
+    row_limit: int = 20,
+) -> dict[str, Any]:
+    """Inspect table metadata and optionally paginate table rows."""
+    tables = doc.tables
+    total_tables = len(tables)
+    offset = max(0, int(row_offset))
+    limit = min(max(1, int(row_limit)), 100)
+
+    if table_index is not None:
+        if table_index < 0 or table_index >= total_tables:
+            raise IndexError(
+                f"Table index {table_index} is out of range (0-{total_tables - 1})"
+                if total_tables > 0
+                else "Document contains no tables"
+            )
+        targets = [(table_index, tables[table_index])]
+    else:
+        targets = list(enumerate(tables))
+
+    summaries: list[dict[str, Any]] = []
+    for idx, table in targets:
+        row_count = len(table.rows)
+        col_count = len(table.columns) if row_count > 0 else 0
+        headers = [cell.text for cell in table.rows[0].cells] if row_count > 0 else []
+        entry: dict[str, Any] = {
+            "table_index": idx,
+            "row_count": row_count,
+            "col_count": col_count,
+            "headers": headers,
+        }
+        if include_rows:
+            end_row = min(row_count, offset + limit)
+            entry["rows"] = [
+                [cell.text for cell in table.rows[r].cells]
+                for r in range(min(offset, row_count), end_row)
+            ]
+            entry["row_offset"] = offset
+            entry["truncated"] = end_row < row_count
+        summaries.append(entry)
+
+    return {"total_tables": total_tables, "tables": summaries}

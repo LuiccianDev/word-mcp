@@ -266,18 +266,22 @@ async def set_page_layout(
     section_index: int = 0,
     orientation: str = "portrait",
     file_path: str | None = None,
+    page_size: str = "letter",
 ) -> dict[str, Any]:
-    """Set the page layout orientation (portrait or landscape) for a specific section."""
+    """Set the page layout orientation and page size for a specific section."""
     target_path = filename or file_path or ""
     try:
         with document_context(target_path, mode="write") as doc:
             core_set_page_layout(
-                doc, section_idx=section_index, orientation=orientation
+                doc,
+                section_idx=section_index,
+                orientation=orientation,
+                page_size=page_size,
             )
 
         return {
             "status": "success",
-            "message": f"Successfully set section {section_index} layout to {orientation}",
+            "message": f"Successfully set section {section_index} layout to {orientation} ({page_size})",
             "filename": str(target_path),
         }
     except (ValueError, IndexError, DocumentProcessingError, OSError) as error:

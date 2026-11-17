@@ -275,3 +275,107 @@ async def test_compound_help_not_shadowed_by_domain_action() -> None:
     result = await _dispatch("mock_group", {"help": fake_help}, "help", None)
     assert "actions" in result
     assert "shadowed" not in result
+
+
+@pytest.mark.asyncio
+async def test_compound_word_document_read_range(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("WORD_MCP_TOOL_MODE", "compound")
+    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    server = create_server()
+    doc_path = str(tmp_path / "range_compound.docx")
+    await _call_tool(
+        server,
+        "build_document",
+        {
+            "filename": doc_path,
+            "elements": [
+                {"type": "heading", "text": "Overview", "level": 1},
+                {"type": "paragraph", "text": "Summary body."},
+                {"type": "heading", "text": "Next", "level": 1},
+                {"type": "paragraph", "text": "Next body."},
+            ],
+        },
+    )
+    help_res = await _call_tool(
+        server,
+        "word_document",
+        {"action": "help", "params": {"action": "read_range"}},
+    )
+    assert help_res["action"] == "read_range"
+    res = await _call_tool(
+        server,
+        "word_document",
+        {
+            "action": "read_range",
+            "params": {"filename": doc_path, "section_heading": "Overview"},
+        },
+    )
+    assert res["status"] == "success"
+    assert [p["text"] for p in res["paragraphs"]] == ["Overview", "Summary body."]
+
+
+@pytest.mark.asyncio
+async def test_compound_word_document_get_tables(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("WORD_MCP_TOOL_MODE", "compound")
+    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    server = create_server()
+    doc_path = str(tmp_path / "tables_compound.docx")
+    await _call_tool(
+        server,
+        "build_document",
+        {
+            "filename": doc_path,
+            "elements": [
+                {"type": "table", "headers": ["ColA", "ColB"], "rows": [["1", "2"]]}
+            ],
+        },
+    )
+    res = await _call_tool(
+        server,
+        "word_document",
+        {"action": "get_tables", "params": {"filename": doc_path, "include_rows": True}},
+    )
+    assert res["status"] == "success"
+    assert res["total_tables"] == 1
+    assert res["tables"][0]["headers"] == ["ColA", "ColB"]
+
+
+@pytest.mark.asyncio
+async def test_compound_word_content_batch_edit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("WORD_MCP_TOOL_MODE", "compound")
+    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    server = create_server()
+    doc_path = str(tmp_path / "batch_edit_compound.docx")
+    await _call_tool(
+        server,
+        "build_document",
+        {
+            "filename": doc_path,
+            "elements": [
+                {"type": "paragraph", "text": "Hello old world"},
+                {"type": "paragraph", "text": "Second line"},
+            ],
+        },
+    )
+    res = await _call_tool(
+        server,
+        "word_content",
+        {
+            "action": "batch_edit",
+            "params": {
+                "filename": doc_path,
+                "operations": [
+                    {"op": "replace_text", "old_text": "old", "new_text": "new"},
+                    {"op": "replace_paragraph", "paragraph_index": 1, "text": "Updated"},
+                ],
+            },
+        },
+    )
+    assert res["status"] == "success"
+    assert res["applied_count"] == 2

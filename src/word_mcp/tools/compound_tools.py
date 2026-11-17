@@ -263,6 +263,8 @@ _DOCUMENT_ACTIONS: dict[str, _ToolFn] = {
     "paragraph_text": document_tools.get_paragraph_text_from_document,
     "find_text": document_tools.find_text_in_document,
     "to_pdf": document_tools.convert_to_pdf,
+    "read_range": document_tools.read_document_range,
+    "get_tables": document_tools.get_document_tables,
 }
 
 _CONTENT_ACTIONS: dict[str, _ToolFn] = {
@@ -276,6 +278,7 @@ _CONTENT_ACTIONS: dict[str, _ToolFn] = {
     "add_toc": content_tools.add_table_of_contents,
     "add_hyperlink": content_tools.add_hyperlink,
     "add_bookmark": content_tools.add_bookmark,
+    "batch_edit": content_tools.batch_edit_document,
 }
 
 _FORMAT_ACTIONS: dict[str, _ToolFn] = {
