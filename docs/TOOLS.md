@@ -4,7 +4,7 @@ This document provides a comprehensive reference for all tools available in the 
 
 > **Note:** Tool names are descriptive and do not use a namespace prefix (for example, `create_document`).
 >
-> **Compound Mode (Default):** By default (`WORD_MCP_TOOLS=compound`, aliased as `compact`), the server exposes 9 tools (`build_document`, `create_from_markdown`, `batch_add_content`, `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to minimize context overhead. Set `WORD_MCP_TOOLS=full` (or `granular`) to register all 40 individual tools below. Context-efficient compound actions include `word_document` (`read_range`, `get_tables`) and `word_content` (`batch_edit`).
+> **Compound Mode (Default):** By default (`WORD_MCP_TOOLS=compound`), the server exposes 9 tools (`build_document`, `create_from_markdown`, `batch_add_content`, `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to minimize context overhead. Set `WORD_MCP_TOOLS=full` (or `granular`) to register all 40 individual tools below. Context-efficient compound actions include `word_document` (`read_range`, `get_tables`) and `word_content` (`batch_edit`).
 
 ## Table of Contents
 

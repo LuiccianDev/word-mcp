@@ -1,4 +1,4 @@
-"""Tests for compact/compound default tool mode and environment variable aliases."""
+"""Tests for compound default tool mode and environment variable aliases."""
 
 from __future__ import annotations
 
@@ -63,12 +63,11 @@ async def test_explicit_full_or_granular_mode(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["compact", "compound"])
-async def test_compact_and_compound_register_nine_tools(
-    monkeypatch: pytest.MonkeyPatch, mode: str
+async def test_compound_mode_registers_nine_tools(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("WORD_MCP_TOOL_MODE", raising=False)
-    monkeypatch.setenv("WORD_MCP_TOOLS", mode)
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     server = create_server()
     names = await _tool_names(server)
     assert names == EXPECTED_COMPOUND_TOOLS
@@ -83,7 +82,7 @@ async def test_legacy_word_mcp_tool_mode_fallback_and_precedence(
     names = await _tool_names(create_server())
     assert len(names) == 40
 
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     names = await _tool_names(create_server())
     assert names == EXPECTED_COMPOUND_TOOLS
 
@@ -105,6 +104,10 @@ def test_invalid_tool_mode_raises_value_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("WORD_MCP_TOOL_MODE", raising=False)
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    with pytest.raises(ValueError, match="WORD_MCP_TOOLS"):
+        create_server()
+
     monkeypatch.setenv("WORD_MCP_TOOLS", "invalid_mode")
     with pytest.raises(ValueError, match="WORD_MCP_TOOLS"):
         create_server()
@@ -114,7 +117,7 @@ def test_invalid_tool_mode_raises_value_error(
 async def test_compound_unknown_action_raises_tool_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     server = create_server()
     with pytest.raises(ToolError, match="Unknown action"):
         await _call_tool(server, "word_document", {"action": "nonexistent"})
@@ -124,7 +127,7 @@ async def test_compound_unknown_action_raises_tool_error(
 async def test_compound_unknown_param_raises_tool_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     server = create_server()
     with pytest.raises(ToolError, match="unknown parameter"):
@@ -145,7 +148,7 @@ async def test_compound_unknown_param_raises_tool_error(
 async def test_compound_missing_required_param_raises_tool_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     server = create_server()
     with pytest.raises(ToolError, match="missing required parameter"):
         await _call_tool(server, "word_document", {"action": "create", "params": {}})
@@ -155,7 +158,7 @@ async def test_compound_missing_required_param_raises_tool_error(
 async def test_compound_end_to_end_document_workflow(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     server = create_server()
     doc_path = str(tmp_path / "compound_test.docx")
@@ -212,7 +215,7 @@ async def test_compound_end_to_end_document_workflow(
 async def test_compound_unknown_action_suggests_close_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     server = create_server()
     with pytest.raises(ToolError, match="Did you mean 'create'"):
         await _call_tool(server, "word_document", {"action": "creat", "params": {}})
@@ -222,7 +225,7 @@ async def test_compound_unknown_action_suggests_close_match(
 async def test_compound_unknown_param_suggests_close_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     server = create_server()
     with pytest.raises(ToolError, match="Did you mean 'filename'"):
         await _call_tool(
@@ -236,7 +239,7 @@ async def test_compound_unknown_param_suggests_close_match(
 async def test_compound_missing_required_param_lists_expected_signature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     server = create_server()
     with pytest.raises(ToolError, match="Required parameters:"):
         await _call_tool(
@@ -250,7 +253,7 @@ async def test_compound_missing_required_param_lists_expected_signature(
 async def test_compound_type_mismatch_raises_clear_tool_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     server = create_server()
     with pytest.raises(ToolError, match="Invalid type for 'level'"):
         await _call_tool(
@@ -267,7 +270,7 @@ async def test_compound_type_mismatch_raises_clear_tool_error(
 async def test_compound_help_action_returns_action_schemas(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     server = create_server()
     overview = await _call_tool(server, "word_document", {"action": "help"})
     assert overview["tool"] == "word_document"
@@ -286,7 +289,7 @@ async def test_compound_help_action_returns_action_schemas(
 async def test_compound_coerces_valid_stringified_int_without_type_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     server = create_server()
     doc_path = str(tmp_path / "coerce_test.docx")
@@ -320,7 +323,7 @@ async def test_compound_help_not_shadowed_by_domain_action() -> None:
 async def test_compound_word_document_read_range(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     server = create_server()
     doc_path = str(tmp_path / "range_compound.docx")
@@ -359,7 +362,7 @@ async def test_compound_word_document_read_range(
 async def test_compound_word_document_get_tables(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     server = create_server()
     doc_path = str(tmp_path / "tables_compound.docx")
@@ -387,7 +390,7 @@ async def test_compound_word_document_get_tables(
 async def test_compound_word_content_batch_edit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("WORD_MCP_TOOLS", "compact")
+    monkeypatch.setenv("WORD_MCP_TOOLS", "compound")
     monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
     server = create_server()
     doc_path = str(tmp_path / "batch_edit_compound.docx")

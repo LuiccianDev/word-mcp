@@ -23,7 +23,6 @@ from word_mcp.tools.compound_tools import register_compound_tools
 
 _TOOL_MODE_ALIASES: dict[str, str] = {
     "compound": "compound",
-    "compact": "compound",
     "full": "full",
     "granular": "full",
 }
@@ -45,7 +44,7 @@ def get_tool_mode() -> str:
     if normalized is None:
         raise ValueError(
             f"Invalid WORD_MCP_TOOLS={mode!r}. "
-            "Expected one of: compound, full (aliases: compact, granular)"
+            "Expected one of: compound, full (alias: granular)"
         )
     return normalized
 
