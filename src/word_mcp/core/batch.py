@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from docx.document import Document as DocumentType
@@ -16,8 +17,8 @@ from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Inches, Pt, RGBColor
 from docx.text.run import Run
 
@@ -50,6 +51,85 @@ SUPPORTED_ELEMENT_TYPES = (
     "references",
     "title_block",
 )
+
+
+@dataclass(frozen=True)
+class CalloutStyle:
+    """Visual configuration for a styled alert callout box."""
+
+    label: str
+    accent_hex: str
+    fill_hex: str
+    title_hex: str
+
+
+CALLOUT_VARIANTS: dict[str, CalloutStyle] = {
+    "note": CalloutStyle("Note", "0969DA", "F0F6FC", "0550AE"),
+    "tip": CalloutStyle("Tip", "1A7F37", "F0FDF4", "116329"),
+    "important": CalloutStyle("Important", "8250DF", "F5F0FF", "6639BA"),
+    "warning": CalloutStyle("Warning", "9A6700", "FFF8C5", "7D4E00"),
+    "caution": CalloutStyle("Caution", "CF222E", "FFEBE9", "A40E26"),
+}
+
+_ALERT_MARKER_RE = re.compile(
+    r"^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$",
+    re.IGNORECASE,
+)
+
+
+def _render_callout_box(
+    doc: DocumentType,
+    text: str,
+    style: CalloutStyle,
+    title: str | None = None,
+) -> None:
+    table = doc.add_table(rows=1, cols=1)
+    tbl_pr = table._tbl.tblPr
+    tbl_w = tbl_pr.find(qn("w:tblW"))
+    if tbl_w is not None:
+        tbl_pr.remove(tbl_w)
+    tbl_pr.append(parse_xml(f'<w:tblW {nsdecls("w")} w:w="5000" w:type="pct"/>'))
+
+    cell = table.cell(0, 0)
+    tc_pr = cell._tc.get_or_add_tcPr()
+    tc_pr.append(
+        parse_xml(
+            f'<w:shd {nsdecls("w")} w:val="clear" w:color="auto" w:fill="{style.fill_hex}"/>'
+        )
+    )
+    tc_pr.append(
+        parse_xml(
+            f'<w:tcBorders {nsdecls("w")}>'
+            f'  <w:top w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+            f'  <w:left w:val="single" w:sz="24" w:space="0" w:color="{style.accent_hex}"/>'
+            f'  <w:bottom w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+            f'  <w:right w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+            f"</w:tcBorders>"
+        )
+    )
+    tc_pr.append(
+        parse_xml(
+            f'<w:tcMar {nsdecls("w")}>'
+            f'  <w:top w:w="120" w:type="dxa"/>'
+            f'  <w:left w:w="200" w:type="dxa"/>'
+            f'  <w:bottom w:w="120" w:type="dxa"/>'
+            f'  <w:right w:w="160" w:type="dxa"/>'
+            f"</w:tcMar>"
+        )
+    )
+
+    p = cell.paragraphs[0]
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(2)
+
+    header_label = str(title).strip() if title else style.label.upper()
+    title_run = p.add_run(header_label)
+    title_run.bold = True
+    title_run.font.color.rgb = RGBColor.from_string(style.title_hex)
+
+    if text:
+        title_run.add_break()
+        add_inline_formatted_text(p, text)
 
 
 def apply_page_number_field(paragraph: Any) -> None:
@@ -325,8 +405,24 @@ def render_element(doc: DocumentType, elem: dict[str, Any]) -> str:
         return "page_break"
 
     elif elem_type in ("callout", "quote"):
-        text = elem.get("text", "")
+        text = str(elem.get("text", ""))
         title = elem.get("title")
+        raw_variant = elem.get("variant") or elem.get("alert_type")
+        if raw_variant is not None:
+            variant_key = str(raw_variant).strip().lower()
+            if variant_key not in CALLOUT_VARIANTS:
+                valid = ", ".join(sorted(CALLOUT_VARIANTS))
+                raise ValueError(
+                    f"Unsupported callout variant '{raw_variant}'. Valid variants: {valid}."
+                )
+            _render_callout_box(
+                doc,
+                text=text,
+                style=CALLOUT_VARIANTS[variant_key],
+                title=title,
+            )
+            return "callout"
+
         p = doc.add_paragraph()
         p.paragraph_format.left_indent = Cm(1.0)
         p.paragraph_format.right_indent = Cm(1.0)
@@ -494,6 +590,7 @@ def parse_markdown_to_elements(markdown_text: str) -> list[dict[str, Any]]:
     in_table = False
     table_headers: list[str] = []
     table_rows: list[list[str]] = []
+    quote_lines: list[str] = []
 
     def flush_table() -> None:
         nonlocal in_table, table_headers, table_rows
@@ -510,11 +607,37 @@ def parse_markdown_to_elements(markdown_text: str) -> list[dict[str, Any]]:
         table_headers = []
         table_rows = []
 
+    def flush_quote() -> None:
+        nonlocal quote_lines
+        if not quote_lines:
+            return
+        first_line = quote_lines[0]
+        alert_match = _ALERT_MARKER_RE.match(first_line)
+        if alert_match:
+            variant = alert_match.group(1).lower()
+            parts = [alert_match.group(2).strip()] if alert_match.group(2).strip() else []
+            parts.extend(q for q in quote_lines[1:] if q)
+            elements.append(
+                {"type": "callout", "variant": variant, "text": " ".join(parts)}
+            )
+        else:
+            body = " ".join(q for q in quote_lines if q)
+            elements.append({"type": "callout", "text": body})
+        quote_lines = []
+
     for raw_line in lines:
         line = raw_line.strip()
         if not line:
             flush_table()
+            flush_quote()
             continue
+
+        if line == ">" or line.startswith("> "):
+            flush_table()
+            quote_lines.append(line[2:].strip() if line.startswith("> ") else "")
+            continue
+        else:
+            flush_quote()
 
         # Check for table line
         if line.startswith("|") and line.endswith("|"):
@@ -578,15 +701,11 @@ def parse_markdown_to_elements(markdown_text: str) -> list[dict[str, Any]]:
                 elements.append({"type": "numbered_list", "items": [item_val]})
             continue
 
-        # Blockquote / callout
-        if line.startswith("> "):
-            elements.append({"type": "callout", "text": line[2:].strip()})
-            continue
-
         # Standard paragraph
         elements.append({"type": "paragraph", "text": line})
 
     flush_table()
+    flush_quote()
     return elements
 
 

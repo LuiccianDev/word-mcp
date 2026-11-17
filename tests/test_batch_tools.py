@@ -236,6 +236,80 @@ Texto después del salto de página.
         self.assertIn("Visit ", p.text)
         self.assertIn("[Bad]()", p.text)
 
+    async def test_styled_callout_box_variants(self) -> None:
+        """Test styled callout boxes in build_document and invalid variant rejection."""
+        from docx.oxml.ns import qn
+
+        result = await batch_tools.build_document(
+            filename=self.doc_path,
+            elements=[
+                {
+                    "type": "callout",
+                    "variant": "warning",
+                    "text": "Verify **load limits** before deployment.",
+                },
+                {
+                    "type": "callout",
+                    "variant": "tip",
+                    "title": "Pro Tip",
+                    "text": "Use compact mode.",
+                },
+            ],
+        )
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["element_counts"]["callout"], 2)
+
+        doc = Document(self.doc_path)
+        self.assertEqual(len(doc.tables), 2)
+
+        warn_cell = doc.tables[0].cell(0, 0)
+        self.assertIn("WARNING", warn_cell.text)
+        self.assertIn("Verify load limits before deployment.", warn_cell.text)
+        tc_pr = warn_cell._tc.tcPr
+        shd = tc_pr.find(qn("w:shd"))
+        self.assertIsNotNone(shd)
+        self.assertEqual(shd.get(qn("w:fill")), "FFF8C5")
+        left_border = tc_pr.find(qn("w:tcBorders")).find(qn("w:left"))
+        self.assertEqual(left_border.get(qn("w:color")), "9A6700")
+
+        tip_cell = doc.tables[1].cell(0, 0)
+        self.assertIn("Pro Tip", tip_cell.text)
+        self.assertIn("Use compact mode.", tip_cell.text)
+
+        bad = await batch_tools.build_document(
+            filename=self.doc_path,
+            elements=[{"type": "callout", "variant": "unknown", "text": "Nope"}],
+        )
+        self.assertEqual(bad["status"], "error")
+
+    async def test_create_from_markdown_github_alerts(self) -> None:
+        """Test GitHub-style alerts render as callout boxes while plain quotes stay paragraphs."""
+        md = (
+            "# Report\n\n"
+            "> [!NOTE]\n"
+            "> First line of note.\n"
+            "> Second line with **bold**.\n\n"
+            "> [!CAUTION]\n"
+            "> Do not skip validation.\n\n"
+            "> Plain quote stays a paragraph.\n"
+        )
+        result = await batch_tools.create_from_markdown(
+            filename=self.doc_path,
+            markdown_content=md,
+        )
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["element_counts"]["callout"], 3)
+
+        doc = Document(self.doc_path)
+        self.assertEqual(len(doc.tables), 2)
+        self.assertIn("NOTE", doc.tables[0].cell(0, 0).text)
+        self.assertIn("First line of note. Second line with bold.", doc.tables[0].cell(0, 0).text)
+        self.assertIn("CAUTION", doc.tables[1].cell(0, 0).text)
+        self.assertIn("Do not skip validation.", doc.tables[1].cell(0, 0).text)
+
+        para_texts = [p.text for p in doc.paragraphs]
+        self.assertIn("Plain quote stays a paragraph.", para_texts)
+
 
 if __name__ == "__main__":
     unittest.main()
