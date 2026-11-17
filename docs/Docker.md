@@ -21,13 +21,13 @@ docker build -t word-mcp .
 ```bash
 docker run --rm -i \
   -v /path/to/your/documents:/documents \
-  -e MCP_ALLOWED_DIRECTORIES=/documents \
+  -e WORD_MCP_DIRS=/documents \
   word-mcp
 ```
 
 - `-i` keeps standard input open for the `stdio` transport.
 - `-v` mounts the directory that contains the Word documents. Replace `/path/to/your/documents` with the absolute path on your host.
-- `-e MCP_ALLOWED_DIRECTORIES` restricts file access to the mounted directory.
+- `-e WORD_MCP_DIRS` restricts file access to the mounted directory.
 
 ---
 
@@ -46,7 +46,7 @@ Add the following entry to `claude_desktop_config.json`:
         "run", "--rm", "-i",
         "-v", "/path/to/your/documents:/documents",
         "--name", "word-mcp",
-        "-e", "MCP_ALLOWED_DIRECTORIES=/documents",
+        "-e", "WORD_MCP_DIRS=/documents",
         "word-mcp"
       ]
     }
@@ -69,7 +69,7 @@ Adjust the mounted path to match your system.
 
 ## 5. Security recommendations
 
-- Always set `MCP_ALLOWED_DIRECTORIES` to restrict access to the required folder only.
+- Always set `WORD_MCP_DIRS` to restrict access to the required folder only.
 - Mount only the volumes that are strictly necessary.
 - Review the permissions of the shared files.
 - Do not open firewall ports for the container.

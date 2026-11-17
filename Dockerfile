@@ -13,7 +13,7 @@ WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH" \
-    MCP_ALLOWED_DIRECTORIES=/documents
+    WORD_MCP_DIRS=/documents
 
 # Install only runtime dependencies from the lockfile.
 COPY pyproject.toml uv.lock README.md LICENSE ./

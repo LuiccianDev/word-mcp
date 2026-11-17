@@ -28,7 +28,7 @@
         "luiccian-word-mcp"
       ],
       "env": {
-        "MCP_ALLOWED_DIRECTORIES": "${user_config:directory}"
+        "WORD_MCP_DIRS": "${user_config:directory}"
       }
     }
   },

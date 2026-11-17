@@ -13,11 +13,17 @@ from pathlib import Path
 def get_allowed_directories() -> list[str]:
     """Get the list of allowed directories from environment variables.
 
+    Reads ``WORD_MCP_DIRS`` (falling back to legacy ``MCP_ALLOWED_DIRECTORIES``).
+
     Returns:
         List of absolute paths to directories where documents can be created/accessed.
-        Defaults to ['./documents'] if MCP_ALLOWED_DIRECTORIES is not set.
+        Defaults to ``['./documents']`` if neither variable is set.
     """
-    allowed_dirs_str = os.environ.get("MCP_ALLOWED_DIRECTORIES", "./documents")
+    allowed_dirs_str = (
+        os.environ.get("WORD_MCP_DIRS")
+        or os.environ.get("MCP_ALLOWED_DIRECTORIES")
+        or "./documents"
+    )
     allowed_dirs = [d.strip() for d in allowed_dirs_str.split(",") if d.strip()]
     return [str(Path(d).resolve()) for d in allowed_dirs]
 

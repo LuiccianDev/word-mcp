@@ -45,7 +45,7 @@ This reads `manifest.json` from the current directory and creates a `.mcpb` bund
 
 The extension exposes a directory configuration field mapped from the manifest:
 
-- **Directory (`MCP_ALLOWED_DIRECTORIES`)**: Enter the absolute path to the directory containing your Word documents (e.g., `/Users/username/Documents` or `C:\Users\username\Documents`).
+- **Directory (`WORD_MCP_DIRS`)**: Enter the absolute path to the directory containing your Word documents (e.g., `/Users/username/Documents` or `C:\Users\username\Documents`).
 - All document read, write, and batch operations will be restricted strictly to this designated path and its subdirectories.
 
 ---

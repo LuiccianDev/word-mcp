@@ -61,7 +61,7 @@ Add this configuration to your `claude_desktop_config.json`:
       "command": "uvx",
       "args": ["luiccian-word-mcp"],
       "env": {
-        "MCP_ALLOWED_DIRECTORIES": "/path/to/your/documents"
+        "WORD_MCP_DIRS": "/path/to/your/documents"
       }
     }
   }
@@ -76,7 +76,7 @@ Add this configuration to your `claude_desktop_config.json`:
 >       "command": "uv",
 >       "args": ["run", "--directory", "/path/to/word-mcp", "luiccian-word-mcp"],
 >       "env": {
->         "MCP_ALLOWED_DIRECTORIES": "/path/to/your/documents"
+>         "WORD_MCP_DIRS": "/path/to/your/documents"
 >       }
 >     }
 >   }
@@ -92,7 +92,7 @@ Add this configuration to your `claude_desktop_config.json`:
       "command": "uvx",
       "args": ["luiccian-word-mcp"],
       "env": {
-        "MCP_ALLOWED_DIRECTORIES": "${workspaceFolder}"
+        "WORD_MCP_DIRS": "${workspaceFolder}"
       }
     }
   }
@@ -230,8 +230,8 @@ The distribution boundary between the PyPI package and the repository is strictl
 
 - **Security Policy**: See [`SECURITY.md`](SECURITY.md) for vulnerability disclosure, protection metadata and threat model, and threat modeling.
 - **Rules for AI Assistants**: See [`AGENTS.md`](AGENTS.md) for official development directives, coding standards, and token optimization rules.
-- **Directory Isolation**: Set `MCP_ALLOWED_DIRECTORIES` to restrict document operations strictly to designated folders. Path canonicalization prevents directory traversal.
-- **Tool Registration Mode (`WORD_MCP_TOOL_MODE`)**: Defaults to `granular` (all 40 tools). Set `WORD_MCP_TOOL_MODE=compound` to expose a 9-tool surface (`build_document`, `create_from_markdown`, `batch_add_content`, plus 6 action-dispatched domain tools: `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`), reducing tool-schema context overhead by 77.5% for clients with strict tool-count limits.
+- **Directory Isolation**: Set `WORD_MCP_DIRS` to restrict document operations strictly to designated folders. Path canonicalization prevents directory traversal.
+- **Tool Registration Mode (`WORD_MCP_TOOLS`)**: Defaults to `compact` (also aliased as `compound`), exposing a 9-tool surface (`build_document`, `create_from_markdown`, `batch_add_content`, plus 6 action-dispatched domain tools: `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) that reduces tool-schema context overhead by 77.5%. Set `WORD_MCP_TOOLS=full` (or `granular`) to expose all 40 individual tools. Legacy `WORD_MCP_TOOL_MODE` remains supported as a fallback.
 
 ---
 

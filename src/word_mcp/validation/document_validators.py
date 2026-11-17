@@ -165,7 +165,7 @@ def _writeable_error_response(error_msg: str) -> dict[str, str]:
         "error": f"Cannot write to file: {error_msg}",
         "hint": (
             "Ensure the file is not open in Microsoft Word, verify write permissions, "
-            "and check that the target directory exists and is within MCP_ALLOWED_DIRECTORIES."
+            "and check that the target directory exists and is within WORD_MCP_DIRS."
         ),
     }
 

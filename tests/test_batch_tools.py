@@ -16,7 +16,7 @@ class TestBatchTools(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.temp_dir = TemporaryDirectory()
         self.doc_path = str(Path(self.temp_dir.name) / "test_doc.docx")
-        os.environ["MCP_ALLOWED_DIRECTORIES"] = self.temp_dir.name
+        os.environ["WORD_MCP_DIRS"] = self.temp_dir.name
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
