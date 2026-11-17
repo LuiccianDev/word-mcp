@@ -278,6 +278,7 @@ _CONTENT_ACTIONS: dict[str, _ToolFn] = {
     "add_toc": content_tools.add_table_of_contents,
     "add_hyperlink": content_tools.add_hyperlink,
     "add_bookmark": content_tools.add_bookmark,
+    "batch_edit": content_tools.batch_edit_document,
 }
 
 _FORMAT_ACTIONS: dict[str, _ToolFn] = {

@@ -19,6 +19,7 @@ from word_mcp.core import (
     core_delete_paragraph,
     core_find_and_replace_text,
 )
+from word_mcp.core.content import core_batch_edit
 from word_mcp.core.document_context import document_context
 from word_mcp.exception import (
     DocumentProcessingError,
@@ -336,4 +337,28 @@ async def add_bookmark(
             else DocumentProcessingError(f"Failed to add bookmark: {str(error)}"),
             filename=target_path,
             operation="add bookmark",
+        )
+
+
+@validate_docx_write("filename")
+async def batch_edit_document(
+    filename: str, operations: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Apply multiple content edits atomically in a single document pass."""
+    try:
+        with document_context(filename, mode="write") as doc:
+            result = core_batch_edit(doc, operations)
+        return {
+            "status": "success",
+            "filename": filename,
+            "message": f"Applied {result['applied_count']} batch edit operations to {filename}",
+            **result,
+        }
+    except (ValueError, IndexError, KeyError, DocumentProcessingError, OSError) as error:
+        return ExceptionTool.handle_error(
+            error
+            if isinstance(error, DocumentProcessingError)
+            else DocumentProcessingError(f"Failed to batch edit document: {error}"),
+            filename=filename,
+            operation="batch edit document",
         )
