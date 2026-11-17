@@ -4,7 +4,7 @@ This document provides a comprehensive reference for all tools available in the 
 
 > **Note:** Tool names are descriptive and do not use a namespace prefix (for example, `create_document`).
 >
-> **Compound Mode:** Set `WORD_MCP_TOOL_MODE=compound` to replace the 40 granular tools with 9 tools (`build_document`, `create_from_markdown`, `batch_add_content`, `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) for clients with limited tool slots or context budgets.
+> **Compound Mode:** Set `WORD_MCP_TOOL_MODE=compound` to replace the 40 granular tools with 9 tools (`build_document`, `create_from_markdown`, `batch_add_content`, `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) for clients with limited tool slots or context budgets. Context-efficient compound actions include `word_document` (`read_range`, `get_tables`) and `word_content` (`batch_edit`).
 
 ## Table of Contents
 
@@ -28,7 +28,7 @@ These high-performance tools generate or modify documents in **1 single MCP call
 ### `build_document`
 
 ```python
-build_document(filename: str | None = None, file_path: str | None = None, title: str | None = None, author: str | None = None, preset: str | None = None, font_name: str | None = None, font_size: float | None = None, line_spacing: float | None = None, space_after: float | None = None, margins: dict[str, float] | None = None, orientation: str | None = None, header_text: str | None = None, footer_text: str | None = None, page_numbers: bool = False, elements: list[dict[str, typing.Any]] | None = None) -> dict[str, typing.Any]
+build_document(filename: str | None = None, file_path: str | None = None, title: str | None = None, author: str | None = None, preset: str | None = None, font_name: str | None = None, font_size: float | None = None, line_spacing: float | None = None, space_after: float | None = None, margins: dict[str, float] | None = None, orientation: str | None = None, header_text: str | None = None, footer_text: str | None = None, page_numbers: bool = False, elements: list[dict[str, typing.Any]] | None = None, page_size: str | None = None) -> dict[str, typing.Any]
 ```
 
 Build a complete, professionally styled Word document in a single tool call with typography, margins, headers, footers, page numbers, headings, paragraphs, and tables.
@@ -50,11 +50,12 @@ Build a complete, professionally styled Word document in a single tool call with
 - `page_numbers` (bool, optional): If `True`, injects automatic Word dynamic page numbering (`PAGE`) in the footer. Default: `False`.
 - `elements` (list of dict): Ordered list of document elements to render:
   - `{"type": "heading", "text": "...", "level": 1-9}`
-  - `{"type": "paragraph", "text": "...", "alignment": "left|center|right|justify", "space_after": 6}` (alignment Default: `left`, supports `**bold**`, `*italic*`)
+  - `{"type": "paragraph", "text": "...", "alignment": "left|center|right|justify", "space_after": 6}` (alignment Default: `left`, supports `**bold**`, `*italic*`, and `[label](https://...)` / `[label](#bookmark)`)
   - `{"type": "table", "headers": ["Col1", "Col2"], "rows": [["A", "B"]], "style": "Table Grid"}`
   - `{"type": "bullet_list", "items": ["Item 1", "Item 2"]}`
   - `{"type": "numbered_list", "items": ["Step 1", "Step 2"]}`
-  - `{"type": "callout", "text": "...", "title": "NOTE"}` (callout `title` is accepted but not rendered)
+  - `{"type": "callout", "text": "...", "title": "NOTE"}` (renders `title` as a bold prefix when provided)
+  - `{"type": "image", "path": "/path/to/image.png", "width": 3.0, "caption": "Figure 1", "alignment": "center"}`
   - `{"type": "page_break"}`
 
 **Returns:**
@@ -65,7 +66,7 @@ Build a complete, professionally styled Word document in a single tool call with
 ### `create_from_markdown`
 
 ```python
-create_from_markdown(markdown_content: str, filename: str | None = None, file_path: str | None = None, title: str | None = None, author: str | None = None, preset: str | None = None, font_name: str | None = None, font_size: float | None = None, line_spacing: float | None = None, space_after: float | None = None, margins: dict[str, float] | None = None, header_text: str | None = None, footer_text: str | None = None, page_numbers: bool = False) -> dict[str, typing.Any]
+create_from_markdown(markdown_content: str, filename: str | None = None, file_path: str | None = None, title: str | None = None, author: str | None = None, preset: str | None = None, font_name: str | None = None, font_size: float | None = None, line_spacing: float | None = None, space_after: float | None = None, margins: dict[str, float] | None = None, header_text: str | None = None, footer_text: str | None = None, page_numbers: bool = False, page_size: str | None = None) -> dict[str, typing.Any]
 ```
 
 Quickly draft and format a Word document from structured markdown text in a single pass.
@@ -873,7 +874,7 @@ Set the core metadata properties of the document.
 ### `set_page_layout`
 
 ```python
-set_page_layout(filename: str = '', section_index: int = 0, orientation: str = 'portrait', file_path: str | None = None) -> dict[str, typing.Any]
+set_page_layout(filename: str = '', section_index: int = 0, orientation: str = 'portrait', file_path: str | None = None, page_size: str = 'letter') -> dict[str, typing.Any]
 ```
 
 Set the page layout orientation (portrait or landscape) for a specific section.

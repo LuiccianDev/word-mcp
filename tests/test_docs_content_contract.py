@@ -38,7 +38,7 @@ def test_build_document_heading_range_and_alignment_default() -> None:
     body = section("build_document")
     assert "1-9" in body
     assert "Default: `left`" in body
-    assert "not rendered" in body
+    assert "bold prefix" in body
 
 
 def test_get_document_text_documents_status_and_text() -> None:

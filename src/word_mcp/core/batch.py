@@ -15,9 +15,11 @@ from docx.document import Document as DocumentType
 from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Inches, Pt, RGBColor
+from docx.text.run import Run
 
 from word_mcp.core.content import core_add_table_of_contents
 from word_mcp.core.presets import (
@@ -139,12 +141,39 @@ def apply_document_settings(
     return config
 
 
+_INLINE_LINK_RE = re.compile(r"^\[([^\[\]]+)\]\(([^\s()]+)\)$")
+
+
+def _append_inline_hyperlink(paragraph: Any, label: str, target: str) -> bool:
+    """Append an external or bookmark w:hyperlink to paragraph; return False if invalid."""
+    hyperlink = OxmlElement("w:hyperlink")
+    if target.startswith("#") and len(target) > 1:
+        hyperlink.set(qn("w:anchor"), target[1:].replace(" ", "_"))
+    elif target.startswith(("http://", "https://", "mailto:")):
+        r_id = paragraph.part.relate_to(target, RT.HYPERLINK, is_external=True)
+        hyperlink.set(qn("r:id"), r_id)
+    else:
+        return False
+
+    run = Run(OxmlElement("w:r"), paragraph)
+    run.text = label
+    run.font.color.theme_color = 10
+    run.font.underline = True
+    hyperlink.append(run._r)
+    paragraph._p.append(hyperlink)
+    return True
+
+
 def add_inline_formatted_text(paragraph: Any, text: str) -> None:
-    """Parse inline **bold** and *italic* markdown in paragraph text."""
-    # Pattern to match bold (**text**) or italic (*text*)
-    tokens = re.split(r"(\*\*.*?\*\*|\*.*?\*)", text)
+    """Parse inline [label](url), **bold**, and *italic* markdown in paragraph text."""
+    tokens = re.split(r"(\[[^\[\]]+\]\([^\s()]+\)|\*\*.*?\*\*|\*.*?\*)", text)
     for token in tokens:
         if not token:
+            continue
+        link_match = _INLINE_LINK_RE.match(token)
+        if link_match and _append_inline_hyperlink(
+            paragraph, link_match.group(1), link_match.group(2)
+        ):
             continue
         if token.startswith("**") and token.endswith("**") and len(token) >= 4:
             run = paragraph.add_run(token[2:-2])

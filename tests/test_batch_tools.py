@@ -219,6 +219,23 @@ Texto después del salto de página.
         )
         self.assertEqual(bad["status"], "error")
 
+    def test_add_inline_formatted_text_hyperlinks(self) -> None:
+        """Test inline markdown [label](url) and [label](#bookmark) hyperlinks."""
+        from docx.oxml.ns import qn
+
+        from word_mcp.core.batch import add_inline_formatted_text
+
+        doc = Document()
+        p = doc.add_paragraph()
+        add_inline_formatted_text(
+            p,
+            "Visit [Word MCP](https://example.com) or [Top](#top_bm) and [Bad]() **bold**.",
+        )
+        hyperlinks = p._p.findall(qn("w:hyperlink"))
+        self.assertEqual(len(hyperlinks), 2)
+        self.assertIn("Visit ", p.text)
+        self.assertIn("[Bad]()", p.text)
+
 
 if __name__ == "__main__":
     unittest.main()
