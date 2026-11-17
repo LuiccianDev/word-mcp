@@ -12,6 +12,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
+from docx.text.paragraph import Paragraph
 
 from word_mcp.core.styles import ensure_heading_style
 
@@ -232,7 +233,10 @@ _BATCH_EDIT_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
 def core_batch_edit(
     doc: DocumentType, operations: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    """Validate and apply multiple edit operations to a document in one pass."""
+    """Validate and apply multiple edit operations sequentially in one pass.
+
+    Operations execute in order against live ``doc.paragraphs`` indices.
+    """
     if not isinstance(operations, list) or not operations:
         raise ValueError("operations must be a non-empty list of edit dictionaries")
 
@@ -240,7 +244,7 @@ def core_batch_edit(
         if not isinstance(entry, dict):
             raise ValueError(f"Operation at index {idx} must be a dict")
         op_name = entry.get("op")
-        if op_name not in _BATCH_EDIT_REQUIRED_KEYS:
+        if not isinstance(op_name, str) or op_name not in _BATCH_EDIT_REQUIRED_KEYS:
             valid = ", ".join(sorted(_BATCH_EDIT_REQUIRED_KEYS))
             raise ValueError(
                 f"Unknown batch_edit op '{op_name}' at index {idx}. Valid: {valid}"
@@ -249,6 +253,16 @@ def core_batch_edit(
         if missing:
             raise ValueError(
                 f"Operation '{op_name}' at index {idx} missing required keys: {missing}"
+            )
+        if "paragraph_index" in _BATCH_EDIT_REQUIRED_KEYS[op_name]:
+            p_idx = entry["paragraph_index"]
+            if isinstance(p_idx, bool) or not isinstance(p_idx, int):
+                raise ValueError(
+                    f"Operation '{op_name}' at index {idx} requires an integer paragraph_index"
+                )
+        if op_name == "replace_text" and not entry["old_text"]:
+            raise ValueError(
+                f"Operation 'replace_text' at index {idx} requires non-empty old_text"
             )
 
     details: list[dict[str, Any]] = []
@@ -260,7 +274,7 @@ def core_batch_edit(
             )
             details.append({"op": op_name, "replacements": count})
         elif op_name == "replace_paragraph":
-            p_idx = int(entry["paragraph_index"])
+            p_idx = entry["paragraph_index"]
             if p_idx < 0 or p_idx >= len(doc.paragraphs):
                 raise IndexError(
                     f"Paragraph index {p_idx} is out of range (0-{len(doc.paragraphs) - 1})"
@@ -268,22 +282,23 @@ def core_batch_edit(
             doc.paragraphs[p_idx].text = str(entry["text"])
             details.append({"op": op_name, "paragraph_index": p_idx})
         elif op_name == "delete_paragraph":
-            p_idx = int(entry["paragraph_index"])
+            p_idx = entry["paragraph_index"]
             core_delete_paragraph(doc, p_idx)
             details.append({"op": op_name, "paragraph_index": p_idx})
         elif op_name == "insert_after_paragraph":
-            p_idx = int(entry["paragraph_index"])
+            p_idx = entry["paragraph_index"]
             total = len(doc.paragraphs)
             if p_idx < 0 or p_idx >= total:
                 raise IndexError(
                     f"Paragraph index {p_idx} is out of range (0-{total - 1})"
                 )
-            text = str(entry["text"])
-            style = entry.get("style")
-            if p_idx + 1 < total:
-                doc.paragraphs[p_idx + 1].insert_paragraph_before(text, style=style)
-            else:
-                doc.add_paragraph(text, style=style)
+            target_para = doc.paragraphs[p_idx]
+            new_p = OxmlElement("w:p")
+            target_para._p.addnext(new_p)
+            inserted = Paragraph(new_p, target_para._parent)
+            inserted.text = str(entry["text"])
+            if entry.get("style"):
+                inserted.style = str(entry["style"])
             details.append({"op": op_name, "paragraph_index": p_idx})
 
     return {"applied_count": len(details), "operations": details}

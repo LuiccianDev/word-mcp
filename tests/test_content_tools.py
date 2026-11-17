@@ -166,3 +166,15 @@ async def test_batch_edit_document_applies_ops_and_rejects_invalid(
     # Document must remain untouched when upfront validation fails
     after_bad = Document(doc_path)
     assert after_bad.paragraphs[0].text == "Alpha One"
+
+    bad_type = await content_tools.batch_edit_document(
+        str(doc_path),
+        operations=[{"op": ["unhashable"]}],
+    )
+    assert bad_type["status"] == "error"
+
+    bad_idx = await content_tools.batch_edit_document(
+        str(doc_path),
+        operations=[{"op": "delete_paragraph", "paragraph_index": None}],
+    )
+    assert bad_idx["status"] == "error"

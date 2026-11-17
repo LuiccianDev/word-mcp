@@ -7,7 +7,6 @@ This module provides functionality for reading/writing core document properties
 
 from docx.document import Document
 from docx.enum.section import WD_ORIENTATION
-from docx.shared import Inches
 
 
 def core_get_core_properties(doc: Document) -> dict[str, str | None]:
@@ -62,22 +61,25 @@ def core_set_core_properties(doc: Document, **kwargs: str) -> None:
 
 
 def core_set_page_layout(
-    doc: Document, section_idx: int = 0, orientation: str = "portrait"
+    doc: Document,
+    section_idx: int = 0,
+    orientation: str = "portrait",
+    page_size: str = "letter",
 ) -> None:
-    """Set the page layout orientation for a specific section.
-
-    This adjusts both the orientation enum and the page dimensions.
-    Assuming standard Letter size for simplicity (8.5 x 11 inches).
+    """Set the page layout orientation and page size for a specific section.
 
     Args:
         doc: The Word document object.
         section_idx: The index of the section to modify.
         orientation: 'portrait' or 'landscape'
+        page_size: 'letter', 'a4', 'legal', or 'a5'
 
     Raises:
         IndexError: If the section index is out of bounds.
-        ValueError: If orientation is not valid.
+        ValueError: If orientation or page_size is not valid.
     """
+    from word_mcp.core.presets import resolve_page_size
+
     sections = doc.sections
     if section_idx < 0 or section_idx >= len(sections):
         raise IndexError(
@@ -85,17 +87,16 @@ def core_set_page_layout(
         )
 
     section = sections[section_idx]
+    width, height = resolve_page_size(page_size)
 
     orientation = orientation.lower()
     if orientation == "landscape":
         section.orientation = WD_ORIENTATION.LANDSCAPE
-        # Standard Letter Landscape
-        section.page_width = Inches(11.0)
-        section.page_height = Inches(8.5)
+        section.page_width = max(width, height)
+        section.page_height = min(width, height)
     elif orientation == "portrait":
         section.orientation = WD_ORIENTATION.PORTRAIT
-        # Standard Letter Portrait
-        section.page_width = Inches(8.5)
-        section.page_height = Inches(11.0)
+        section.page_width = min(width, height)
+        section.page_height = max(width, height)
     else:
         raise ValueError("Orientation must be 'portrait' or 'landscape'")

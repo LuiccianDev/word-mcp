@@ -354,7 +354,14 @@ async def batch_edit_document(
             "message": f"Applied {result['applied_count']} batch edit operations to {filename}",
             **result,
         }
-    except (ValueError, IndexError, KeyError, DocumentProcessingError, OSError) as error:
+    except (
+        ValueError,
+        TypeError,
+        IndexError,
+        KeyError,
+        DocumentProcessingError,
+        OSError,
+    ) as error:
         return ExceptionTool.handle_error(
             error
             if isinstance(error, DocumentProcessingError)

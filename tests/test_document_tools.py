@@ -101,6 +101,12 @@ async def test_read_document_range_by_section_and_empty(
         "Second intro paragraph.",
     ]
 
+    paginated = await document_tools.read_document_range(
+        str(doc_path), section_heading="Intro", start_index=2
+    )
+    assert paginated["status"] == "success"
+    assert [p["text"] for p in paginated["paragraphs"]] == ["Second intro paragraph."]
+
     missing = await document_tools.read_document_range(
         str(doc_path), section_heading="NonExistent"
     )

@@ -379,7 +379,7 @@ def core_read_range(
             if lvl is not None and sec_level is not None and lvl <= sec_level:
                 sec_end = idx
                 break
-        slice_start = sec_start
+        slice_start = max(sec_start, start_index)
         slice_end = sec_end if end_index is None else min(sec_end, end_index + 1)
     else:
         slice_start = max(0, start_index)
