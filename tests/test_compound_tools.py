@@ -314,3 +314,31 @@ async def test_compound_word_document_read_range(
     )
     assert res["status"] == "success"
     assert [p["text"] for p in res["paragraphs"]] == ["Overview", "Summary body."]
+
+
+@pytest.mark.asyncio
+async def test_compound_word_document_get_tables(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("WORD_MCP_TOOL_MODE", "compound")
+    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    server = create_server()
+    doc_path = str(tmp_path / "tables_compound.docx")
+    await _call_tool(
+        server,
+        "build_document",
+        {
+            "filename": doc_path,
+            "elements": [
+                {"type": "table", "headers": ["ColA", "ColB"], "rows": [["1", "2"]]}
+            ],
+        },
+    )
+    res = await _call_tool(
+        server,
+        "word_document",
+        {"action": "get_tables", "params": {"filename": doc_path, "include_rows": True}},
+    )
+    assert res["status"] == "success"
+    assert res["total_tables"] == 1
+    assert res["tables"][0]["headers"] == ["ColA", "ColB"]

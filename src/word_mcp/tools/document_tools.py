@@ -18,6 +18,7 @@ from word_mcp.core import (
 )
 from word_mcp.core.document import core_read_range
 from word_mcp.core.document_context import document_context
+from word_mcp.core.tables import core_get_tables
 from word_mcp.exception import (
     DocumentProcessingError,
     ExceptionTool,
@@ -348,4 +349,33 @@ async def read_document_range(
             else DocumentProcessingError(f"Failed to read document range: {error}"),
             filename=filename,
             operation="read document range",
+        )
+
+
+@validate_docx_read("filename")
+async def get_document_tables(
+    filename: str,
+    table_index: int | None = None,
+    include_rows: bool = False,
+    row_offset: int = 0,
+    row_limit: int = 20,
+) -> dict[str, Any]:
+    """Inspect table metadata and optionally paginate rows without flooding context."""
+    try:
+        with document_context(filename, mode="read") as doc:
+            result = core_get_tables(
+                doc,
+                table_index=table_index,
+                include_rows=include_rows,
+                row_offset=row_offset,
+                row_limit=row_limit,
+            )
+        return {"status": "success", "filename": filename, **result}
+    except (IndexError, ValueError, DocumentProcessingError, OSError) as error:
+        return ExceptionTool.handle_error(
+            error
+            if isinstance(error, DocumentProcessingError)
+            else DocumentProcessingError(f"Failed to get document tables: {error}"),
+            filename=filename,
+            operation="get document tables",
         )

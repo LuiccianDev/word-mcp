@@ -136,3 +136,42 @@ async def test_read_document_range_truncates_on_max_chars(
     assert len(res["paragraphs"]) >= 1
     assert res["next_index"] == res["paragraphs"][-1]["index"] + 1
     assert res["total_paragraphs"] == 10
+
+
+@pytest.mark.asyncio  # type: ignore[misc]
+async def test_get_document_tables_metadata_and_paginated_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test table metadata inspection and row pagination."""
+    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    doc_path = tmp_path / "tables.docx"
+    doc = Document()
+    table = doc.add_table(rows=5, cols=2)
+    table.rows[0].cells[0].text = "Name"
+    table.rows[0].cells[1].text = "Score"
+    for r in range(1, 5):
+        table.rows[r].cells[0].text = f"Item {r}"
+        table.rows[r].cells[1].text = str(r * 10)
+    doc.save(doc_path)
+
+    meta = await document_tools.get_document_tables(str(doc_path))
+    assert meta["status"] == "success"
+    assert meta["total_tables"] == 1
+    assert meta["tables"][0]["row_count"] == 5
+    assert meta["tables"][0]["col_count"] == 2
+    assert meta["tables"][0]["headers"] == ["Name", "Score"]
+    assert "rows" not in meta["tables"][0]
+
+    page = await document_tools.get_document_tables(
+        str(doc_path),
+        table_index=0,
+        include_rows=True,
+        row_offset=1,
+        row_limit=2,
+    )
+    assert page["status"] == "success"
+    assert page["tables"][0]["rows"] == [["Item 1", "10"], ["Item 2", "20"]]
+    assert page["tables"][0]["truncated"] is True
+
+    bad_idx = await document_tools.get_document_tables(str(doc_path), table_index=99)
+    assert bad_idx["status"] == "error"

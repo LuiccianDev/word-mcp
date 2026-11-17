@@ -264,6 +264,7 @@ _DOCUMENT_ACTIONS: dict[str, _ToolFn] = {
     "find_text": document_tools.find_text_in_document,
     "to_pdf": document_tools.convert_to_pdf,
     "read_range": document_tools.read_document_range,
+    "get_tables": document_tools.get_document_tables,
 }
 
 _CONTENT_ACTIONS: dict[str, _ToolFn] = {
