@@ -12,10 +12,18 @@ class TestRuntimeConfig(unittest.TestCase):
 
     def setUp(self) -> None:
         self._env_backup = os.environ.copy()
+        logger = logging.getLogger("word_mcp")
+        self._orig_handlers = logger.handlers[:]
+        self._orig_level = logger.level
+        self._orig_propagate = logger.propagate
 
     def tearDown(self) -> None:
         os.environ.clear()
         os.environ.update(self._env_backup)
+        logger = logging.getLogger("word_mcp")
+        logger.handlers[:] = self._orig_handlers
+        logger.setLevel(self._orig_level)
+        logger.propagate = self._orig_propagate
 
     def test_configure_logging_writes_only_to_stderr(self) -> None:
         from word_mcp.utils.logging_config import configure_logging
