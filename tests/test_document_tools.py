@@ -73,3 +73,66 @@ async def test_copy_document(temp_docx_file: str, tmp_path: Path) -> None:
     result = await document_tools.copy_document(temp_docx_file, str(dest_path))
     assert result["status"] == "success"
     assert os.path.exists(dest_path)
+
+
+@pytest.mark.asyncio  # type: ignore[misc]
+async def test_read_document_range_by_section_and_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test reading a section by heading and handling missing sections or empty docs."""
+    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    doc_path = tmp_path / "sections.docx"
+    doc = Document()
+    doc.add_heading("Intro", level=1)
+    doc.add_paragraph("First intro paragraph.")
+    doc.add_paragraph("Second intro paragraph.")
+    doc.add_heading("Details", level=1)
+    doc.add_paragraph("Detail paragraph.")
+    doc.save(doc_path)
+
+    res = await document_tools.read_document_range(
+        str(doc_path), section_heading="Intro"
+    )
+    assert res["status"] == "success"
+    assert res["section_found"] is True
+    assert [p["text"] for p in res["paragraphs"]] == [
+        "Intro",
+        "First intro paragraph.",
+        "Second intro paragraph.",
+    ]
+
+    missing = await document_tools.read_document_range(
+        str(doc_path), section_heading="NonExistent"
+    )
+    assert missing["status"] == "success"
+    assert missing["section_found"] is False
+    assert missing["paragraphs"] == []
+
+    empty_path = tmp_path / "empty.docx"
+    Document().save(empty_path)
+    empty_res = await document_tools.read_document_range(str(empty_path))
+    assert empty_res["status"] == "success"
+    assert empty_res["paragraphs"] == []
+    assert empty_res["truncated"] is False
+
+
+@pytest.mark.asyncio  # type: ignore[misc]
+async def test_read_document_range_truncates_on_max_chars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test max_chars cap sets truncated=True and next_index."""
+    monkeypatch.setenv("MCP_ALLOWED_DIRECTORIES", str(tmp_path))
+    doc_path = tmp_path / "large.docx"
+    doc = Document()
+    for i in range(10):
+        doc.add_paragraph(f"Para {i}: " + ("x" * 90))
+    doc.save(doc_path)
+
+    res = await document_tools.read_document_range(
+        str(doc_path), start_index=0, max_chars=220
+    )
+    assert res["status"] == "success"
+    assert res["truncated"] is True
+    assert len(res["paragraphs"]) >= 1
+    assert res["next_index"] == res["paragraphs"][-1]["index"] + 1
+    assert res["total_paragraphs"] == 10

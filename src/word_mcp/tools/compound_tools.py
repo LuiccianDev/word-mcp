@@ -263,6 +263,7 @@ _DOCUMENT_ACTIONS: dict[str, _ToolFn] = {
     "paragraph_text": document_tools.get_paragraph_text_from_document,
     "find_text": document_tools.find_text_in_document,
     "to_pdf": document_tools.convert_to_pdf,
+    "read_range": document_tools.read_document_range,
 }
 
 _CONTENT_ACTIONS: dict[str, _ToolFn] = {

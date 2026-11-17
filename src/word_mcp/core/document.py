@@ -326,3 +326,93 @@ def _search_in_element(
             }
         )
     return occurrences
+
+
+def _heading_level(paragraph: Paragraph) -> int | None:
+    """Return heading level (1-9) if paragraph has a Heading style, else None."""
+    style_name = paragraph.style.name if paragraph.style else ""
+    if style_name.startswith("Heading "):
+        suffix = style_name.split(" ", 1)[1].strip()
+        if suffix.isdigit():
+            return int(suffix)
+    return None
+
+
+def core_read_range(
+    doc: DocumentType,
+    start_index: int = 0,
+    end_index: int | None = None,
+    section_heading: str | None = None,
+    max_chars: int = 4000,
+) -> dict[str, Any]:
+    """Read a context-bounded range of paragraphs by index or heading section."""
+    paragraphs = doc.paragraphs
+    total = len(paragraphs)
+    char_budget = max(1, int(max_chars))
+    section_found: bool | None = None
+
+    if section_heading is not None:
+        needle = section_heading.strip().lower()
+        sec_start: int | None = None
+        sec_level: int | None = None
+        for idx, para in enumerate(paragraphs):
+            lvl = _heading_level(para)
+            if lvl is not None and needle in para.text.lower():
+                sec_start = idx
+                sec_level = lvl
+                break
+
+        if sec_start is None:
+            return {
+                "paragraphs": [],
+                "total_paragraphs": total,
+                "returned_count": 0,
+                "truncated": False,
+                "next_index": None,
+                "section_found": False,
+            }
+
+        section_found = True
+        sec_end = total
+        for idx in range(sec_start + 1, total):
+            lvl = _heading_level(paragraphs[idx])
+            if lvl is not None and sec_level is not None and lvl <= sec_level:
+                sec_end = idx
+                break
+        slice_start = sec_start
+        slice_end = sec_end if end_index is None else min(sec_end, end_index + 1)
+    else:
+        slice_start = max(0, start_index)
+        slice_end = total if end_index is None else min(total, end_index + 1)
+
+    collected: list[dict[str, Any]] = []
+    used_chars = 0
+    truncated = False
+    next_index: int | None = None
+
+    for idx in range(slice_start, max(slice_start, slice_end)):
+        para = paragraphs[idx]
+        text = para.text
+        if collected and used_chars + len(text) > char_budget:
+            truncated = True
+            next_index = idx
+            break
+        used_chars += len(text)
+        collected.append(
+            {
+                "index": idx,
+                "text": text,
+                "style": para.style.name if para.style else "Normal",
+            }
+        )
+
+    result: dict[str, Any] = {
+        "paragraphs": collected,
+        "total_paragraphs": total,
+        "returned_count": len(collected),
+        "truncated": truncated,
+        "next_index": next_index,
+    }
+    if section_found is not None:
+        result["section_found"] = section_found
+    return result
