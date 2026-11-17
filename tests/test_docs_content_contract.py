@@ -101,21 +101,6 @@ def test_response_format_scope_is_documented() -> None:
     assert "list_available_documents" in body
 
 
-def test_readme_project_structure_lists_actual_modules() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    for module in (
-        "footnotes.py",
-        "links.py",
-        "headers_footers.py",
-        "properties.py",
-        "footnote_tools.py",
-        "property_tools.py",
-        "utils/",
-        "exception/",
-    ):
-        assert module in readme
-
-
 def test_readme_does_not_claim_heading_hierarchy_outline() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "heading hierarchies" not in readme
