@@ -35,6 +35,11 @@ When assisting users or configuring clients (Claude Desktop, Cursor, Cline, Copi
   uv sync --all-groups
   uv run luiccian-word-mcp
   ```
+- **Runtime Environment Variables:**
+  - `WORD_MCP_DIRS`: Comma-separated allowed directories (legacy fallback: `MCP_ALLOWED_DIRECTORIES`).
+  - `WORD_MCP_TOOLS`: Tool surface mode, defaulting to `compound` (9 tools); set `full` (or `granular`) for all 40 tools (legacy fallback: `WORD_MCP_TOOL_MODE`).
+  - `LOG_LEVEL` / `WORD_MCP_LOG_LEVEL`: Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) written strictly to `stderr`.
+  - `DEV_MODE` / `WORD_MCP_DEV_MODE`: Set `true` to default logging to `DEBUG` and emit full exception tracebacks to `stderr`.
 
 ---
 
