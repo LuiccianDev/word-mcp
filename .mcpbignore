@@ -141,9 +141,6 @@ opencode.json
 .agents/
 .agent/
 .openhands/
-.dockerignore
-Docker.md
-Dockerfile
 docs/
 skills/
 skills-lock.json
