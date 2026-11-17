@@ -23,7 +23,7 @@ Designed from the ground up for maximum token efficiency, it replaces chatty mic
 
 ## Key Architectural Highlights
 
-- **Compact Mode by Default (v3.0.0)**: Registers 9 tools by default (`build_document`, `create_from_markdown`, `batch_add_content`, plus 6 action-dispatched domain tools: `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to reduce tool-schema context overhead by 77.5%. Set `WORD_MCP_TOOLS=full` (or `granular`) to expose all 40 individual tools.
+- **Compound Mode by Default (v3.0.0)**: Registers 9 tools by default (`build_document`, `create_from_markdown`, `batch_add_content`, plus 6 action-dispatched domain tools: `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to reduce tool-schema context overhead by 77.5%. Set `WORD_MCP_TOOLS=full` (or `granular`) to expose all 40 individual tools.
 - **Single-Pass Document Builder**: Create complete, publication-ready documents (headers, footers, dynamic `PAGE` numbers, margins, headings, markdown styling, styled callout boxes, tables, TOCs, images, and lists) in **one single MCP call** (`build_document`).
 - **Markdown Direct Generation**: Turn structured Markdown into styled Word documents in one pass (`create_from_markdown`), including tables, nested lists, inline links, and GitHub-style alert callouts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`).
 - **Visual Design Presets**: Built-in typography and spacing standards (`modern`, `formal`, `academic`, `compact`, `report`, `apa`) with optional `font_name`, `font_size`, and `page_size` overrides.
@@ -51,7 +51,7 @@ uvx luiccian-word-mcp --transport sse --host 127.0.0.1 --port 8000
 
 ## MCP Client Configuration
 
-Configure your AI client by passing environment variables directly in the client's `env` block (no `.env` file is required). By default, the server starts in `compact` mode (9 tools); set `"WORD_MCP_TOOLS": "full"` in `env` to expose all 40 granular tools.
+Configure your AI client by passing environment variables directly in the client's `env` block (no `.env` file is required). By default, the server starts in `compound` mode (9 tools); set `"WORD_MCP_TOOLS": "full"` in `env` to expose all 40 granular tools.
 
 ### 1. Claude Desktop (`claude_desktop_config.json`)
 
@@ -171,7 +171,7 @@ All runtime configuration is supplied via standard OS environment variables or t
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `WORD_MCP_DIRS` | *(current directory)* | Comma-separated list of allowed root directories for reading, writing, and listing `.docx` files. Legacy `MCP_ALLOWED_DIRECTORIES` remains supported as a fallback. |
-| `WORD_MCP_TOOLS` | `compact` | Tool surface mode: `compact` (or `compound`, 9 tools: 3 single-pass + 6 domain dispatchers) or `full` (or `granular`, all 40 tools). Legacy `WORD_MCP_TOOL_MODE` remains supported as a fallback. |
+| `WORD_MCP_TOOLS` | `compound` | Tool surface mode: `compound` (or `compact`, 9 tools: 3 single-pass + 6 domain dispatchers) or `full` (or `granular`, all 40 tools). Legacy `WORD_MCP_TOOL_MODE` remains supported as a fallback. |
 | `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) written strictly to `stderr`. Also accepts `WORD_MCP_LOG_LEVEL`. |
 | `DEV_MODE` | `false` | Set to `true` to default logging to `DEBUG` and log full exception tracebacks to `stderr`. Also accepts `WORD_MCP_DEV_MODE`. |
 

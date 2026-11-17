@@ -37,9 +37,12 @@ async def _call_tool(server: Any, name: str, arguments: dict[str, Any]) -> Any:
 
 
 @pytest.mark.asyncio
-async def test_default_tool_mode_is_compact(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_default_tool_mode_is_compound(monkeypatch: pytest.MonkeyPatch) -> None:
+    from word_mcp.tools.register_tools import get_tool_mode
+
     monkeypatch.delenv("WORD_MCP_TOOLS", raising=False)
     monkeypatch.delenv("WORD_MCP_TOOL_MODE", raising=False)
+    assert get_tool_mode() == "compound"
     server = create_server()
     names = await _tool_names(server)
     assert names == EXPECTED_COMPOUND_TOOLS
