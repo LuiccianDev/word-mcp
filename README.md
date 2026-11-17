@@ -27,7 +27,7 @@ Designed from the ground up for maximum token efficiency, it replaces chatty mic
 - **Single-Pass Document Builder**: Create complete, publication-ready documents (headers, footers, dynamic `PAGE` numbers, margins, headings, markdown styling, styled callout boxes, tables, TOCs, images, and lists) in **one single MCP call** (`build_document`).
 - **Markdown Direct Generation**: Turn structured Markdown into styled Word documents in one pass (`create_from_markdown`), including tables, nested lists, inline links, and GitHub-style alert callouts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`).
 - **Visual Design Presets**: Built-in typography and spacing standards (`modern`, `formal`, `academic`, `compact`, `report`, `apa`) with optional `font_name`, `font_size`, and `page_size` overrides.
-- **Lightweight Outline Inspection**: Extract heading hierarchy, paragraph previews, and table counts without dumping full body text (`get_document_outline`), saving thousands of context tokens.
+- **Lightweight Outline Inspection**: Extract paragraph previews and table counts without dumping full body text (`get_document_outline`), saving thousands of context tokens.
 - **Batch Content Ingestion**: Append multiple sections, tables, callouts, and lists to existing documents in a single atomic operation (`batch_add_content`).
 - **Protection & Security**: Password encryption, editing restrictions, file integrity checks, and headless PDF export.
 - **Complete Tool Reference**: See [`docs/TOOLS.md`](docs/TOOLS.md) for every tool signature, return shape, and parameter contract.
