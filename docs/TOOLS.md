@@ -54,7 +54,7 @@ Build a complete, professionally styled Word document in a single tool call with
   - `{"type": "table", "headers": ["Col1", "Col2"], "rows": [["A", "B"]], "style": "Table Grid"}`
   - `{"type": "bullet_list", "items": ["Item 1", "Item 2"]}`
   - `{"type": "numbered_list", "items": ["Step 1", "Step 2"]}`
-  - `{"type": "callout", "text": "...", "title": "NOTE"}` (renders `title` as a bold prefix when provided)
+  - `{"type": "callout", "text": "...", "title": "NOTE", "variant": "note|tip|important|warning|caution"}` (renders `title` as a bold prefix; when `variant` is set, renders a shaded 1x1 callout box with a colored left accent border)
   - `{"type": "image", "path": "/path/to/image.png", "width": 3.0, "caption": "Figure 1", "alignment": "center"}`
   - `{"type": "page_break"}`
 
@@ -73,7 +73,7 @@ Quickly draft and format a Word document from structured markdown text in a sing
 
 **Parameters:**
 
-- `markdown_content` (str): Markdown text containing headings (`#`, `##`), bullet lists (`-`), numbered lists (`1.`), tables (`| Col1 | Col2 |`), callouts (`>`), and inline formatting (`**bold**`, `*italic*`).
+- `markdown_content` (str): Markdown text containing headings (`#`, `##`), bullet lists (`-`), numbered lists (`1.`), tables (`| Col1 | Col2 |`), blockquotes (`>`) and GitHub-style alert callouts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`), and inline formatting (`**bold**`, `*italic*`).
 - `filename` (str, optional): Output document file path (accepts `filename` or `file_path`).
 - `file_path` (str, optional): Alias for `filename`.
 - `title` (str, optional): Document title metadata.
