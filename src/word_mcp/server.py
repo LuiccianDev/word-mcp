@@ -6,13 +6,15 @@ Acts as the central controller for the MCP server that handles Word document ope
 
 from fastmcp import FastMCP
 
+from word_mcp import __version__
 from word_mcp.tools.register_tools import register_all_tools
+from word_mcp.utils.logging_config import configure_logging, is_dev_mode
 from word_mcp.utils.security import get_allowed_directories
 
 
 def create_server() -> FastMCP:
     """Create and configure the Word MCP Server."""
-
+    logger = configure_logging()
     allowed_dirs = get_allowed_directories()
     dirs_list = "\n".join([f"- `{d}`" for d in allowed_dirs])
 
@@ -84,6 +86,8 @@ Tools use descriptive, unprefixed names (for example, `create_document`). Each t
     )
 
     register_all_tools(mcp)
+    logger.info("Starting Word MCP Server v%s (dev_mode=%s)", __version__, is_dev_mode())
+    logger.debug("Allowed directories: %s", allowed_dirs)
 
     return mcp
 

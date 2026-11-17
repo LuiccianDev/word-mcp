@@ -54,6 +54,35 @@ class TestRuntimeConfig(unittest.TestCase):
         with self.assertRaises(ValueError):
             resolve_log_level()
 
+    def test_create_server_configures_logging_to_stderr(self) -> None:
+        from word_mcp.server import create_server
+
+        os.environ["LOG_LEVEL"] = "INFO"
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+        with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+            create_server()
+
+        self.assertEqual(stdout_buf.getvalue(), "")
+        self.assertIn("Starting Word MCP Server", stderr_buf.getvalue())
+
+    def test_exception_tool_logs_error_when_dev_mode_enabled(self) -> None:
+        from word_mcp.exception.exception_tools import ExceptionTool
+        from word_mcp.utils.logging_config import configure_logging
+
+        os.environ["DEV_MODE"] = "true"
+        stderr_buf = io.StringIO()
+        with redirect_stderr(stderr_buf):
+            configure_logging()
+            res = ExceptionTool.handle_error(
+                ValueError("bad input"),
+                operation="unit_test",
+            )
+
+        self.assertEqual(res["status"], "error")
+        self.assertIn("bad input", stderr_buf.getvalue())
+        self.assertIn("unit_test", stderr_buf.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
