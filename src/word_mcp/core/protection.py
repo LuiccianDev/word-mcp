@@ -5,6 +5,7 @@ Document protection functionality for Word Document Server.
 import datetime
 import hashlib
 import hmac
+import io
 import json
 import logging
 import os
@@ -12,6 +13,13 @@ import secrets
 from typing import Any
 
 from docx.document import Document
+
+from word_mcp.core.document_context import atomic_write_target, document_context
+from word_mcp.exception import (
+    DocumentProcessingError,
+    FileOperationError,
+    ValidationError,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -115,112 +123,97 @@ def core_add_protection_info(
     if signature_info:
         protection_data["signature"] = signature_info
 
-    # Write protection info to metadata file
-    try:
-        with open(metadata_path, "w") as f:
+    # Encrypt before writing metadata so .protection is persisted in a single atomic pass.
+    if protection_type == "password" and raw_password:
+        import msoffcrypto
+
+        try:
+            with open(doc_path, "rb") as f:
+                office_file = msoffcrypto.OfficeFile(f)
+                encrypted_io = io.BytesIO()
+                office_file.encrypt(password=raw_password, outfile=encrypted_io)
+
+            with atomic_write_target(doc_path) as tmp_path:
+                tmp_path.write_bytes(encrypted_io.getvalue())
+
+            protection_data["true_encryption"] = True
+        except (FileOperationError, DocumentProcessingError):
+            raise
+        except OSError as exc:
+            raise FileOperationError(f"Failed to encrypt document: {exc}") from exc
+        except Exception as exc:
+            raise DocumentProcessingError(f"Failed to encrypt document: {exc}") from exc
+
+    with atomic_write_target(metadata_path) as meta_tmp:
+        with open(meta_tmp, "w", encoding="utf-8") as f:
             json.dump(protection_data, f, indent=2)
 
-        # Apply actual document encryption if raw_password is provided
-        if protection_type == "password" and raw_password:
-            import shutil
-            import tempfile
-
-            import msoffcrypto
-
-            # Create a temporary file for the encrypted output
-            temp_fd, temp_path = tempfile.mkstemp(suffix=".docx")
-            os.close(temp_fd)
-
-            try:
-                # Open the document
-                with open(doc_path, "rb") as f:
-                    office_file = msoffcrypto.OfficeFile(f)
-                    # Encrypt with password
-                    office_file.load_key(password=raw_password)
-
-                    # Write the encrypted file to the temp path
-                    with open(temp_path, "wb") as out_file:
-                        office_file.encrypt(out_file=out_file)
-
-                # Replace original with encrypted version
-                shutil.move(temp_path, doc_path)
-
-                # Update metadata to note that true encryption was applied
-                protection_data["true_encryption"] = True
-                with open(metadata_path, "w") as f:
-                    json.dump(protection_data, f, indent=2)
-
-            except Exception as e:
-                logger.error(f"Encryption error: {str(e)}")
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
-                return False
-
-        return True
-    except OSError as e:
-        logger.error(f"Protection error: {str(e)}")
-        return False
+    return True
 
 
 def core_protect_document(filename: str, password: str) -> dict[str, Any]:
     """Add password protection to a Word document using msoffcrypto."""
-    import io
-
     import msoffcrypto
 
     try:
         with open(filename, "rb") as f:
             office_file = msoffcrypto.OfficeFile(f)
+            if office_file.is_encrypted():
+                raise DocumentProcessingError(
+                    "Document is already encrypted.",
+                    suggestion="Unprotect the document before applying new password encryption.",
+                )
+            encrypted_io = io.BytesIO()
+            office_file.encrypt(password=password, outfile=encrypted_io)
 
-        # Check if already encrypted
-        if office_file.is_encrypted:
-            return {"status": "error", "message": "Document is already encrypted."}
+        with atomic_write_target(filename) as tmp_path:
+            tmp_path.write_bytes(encrypted_io.getvalue())
 
-        # Encrypt into memory
-        encrypted_io = io.BytesIO()
-        office_file.encrypt(password=password, outfile=encrypted_io)
-
-        # Write back
-        with open(filename, "wb") as f:
-            f.write(encrypted_io.getvalue())
-
-        # Clear metadata if exists
         base_path, _ = os.path.splitext(filename)
         metadata_path = f"{base_path}.protection"
         if os.path.exists(metadata_path):
             os.remove(metadata_path)
 
         return {"status": "success", "message": "Document encrypted successfully."}
+    except (DocumentProcessingError, FileOperationError, ValidationError):
+        raise
+    except OSError as e:
+        raise FileOperationError(f"Failed to encrypt document: {e}") from e
     except Exception as e:
-        raise RuntimeError(f"Failed to encrypt document: {str(e)}")
+        raise DocumentProcessingError(f"Failed to encrypt document: {e}") from e
 
 
 def core_unprotect_document(filename: str, password: str) -> dict[str, Any]:
     """Remove password protection from a Word document."""
-    import io
-
     import msoffcrypto
 
     try:
         with open(filename, "rb") as f:
             office_file = msoffcrypto.OfficeFile(f)
+            if not office_file.is_encrypted():
+                raise DocumentProcessingError(
+                    "Document is not encrypted.",
+                    suggestion="No password decryption is needed for this document.",
+                )
+            office_file.load_key(password=password)
+            decrypted_io = io.BytesIO()
+            office_file.decrypt(outfile=decrypted_io)
 
-        if not office_file.is_encrypted:
-            return {"status": "error", "message": "Document is not encrypted."}
-
-        office_file.load_key(password=password)
-
-        decrypted_io = io.BytesIO()
-        office_file.decrypt(outfile=decrypted_io)
-
-        with open(filename, "wb") as f:
-            f.write(decrypted_io.getvalue())
+        with atomic_write_target(filename) as tmp_path:
+            tmp_path.write_bytes(decrypted_io.getvalue())
 
         return {"status": "success", "message": "Document decrypted successfully."}
-    except msoffcrypto.exceptions.InvalidKeyError:
-        return {"status": "error", "message": "Incorrect password."}
+    except msoffcrypto.exceptions.InvalidKeyError as exc:
+        raise ValidationError(
+            "Incorrect password.",
+            suggestion="Verify the document password and try again.",
+        ) from exc
+    except (DocumentProcessingError, FileOperationError, ValidationError):
+        raise
+    except OSError as e:
+        raise FileOperationError(f"Failed to decrypt document: {e}") from e
     except Exception as e:
-        raise RuntimeError(f"Failed to decrypt document: {str(e)}")
+        raise DocumentProcessingError(f"Failed to decrypt document: {e}") from e
 
 
 def core_verify_document_protection(
@@ -241,6 +234,26 @@ def core_verify_document_protection(
 
     # Check if protection metadata exists
     if not os.path.exists(metadata_path):
+        import msoffcrypto
+
+        try:
+            with open(doc_path, "rb") as f:
+                office_file = msoffcrypto.OfficeFile(f)
+                if office_file.is_encrypted():
+                    if password:
+                        try:
+                            office_file.load_key(password=password)
+                            office_file.decrypt(outfile=io.BytesIO())
+                            return True, "Document is password-encrypted and password verified"
+                        except msoffcrypto.exceptions.InvalidKeyError:
+                            return False, "Incorrect password"
+                    return True, "Document is protected with password protection"
+        except msoffcrypto.exceptions.FileFormatError as exc:
+            raise DocumentProcessingError(
+                f"File '{doc_path}' is not a valid Word document (.docx)."
+            ) from exc
+        except OSError as exc:
+            raise FileOperationError(f"Cannot read document '{doc_path}': {exc}") from exc
         return False, "Document is not protected"
 
     try:
@@ -340,8 +353,6 @@ def core_verify_signature(doc_path: str) -> tuple[bool, str]:
     Returns:
         Tuple of (is_valid, message)
     """
-    from docx import Document
-
     base_path, _ = os.path.splitext(doc_path)
     metadata_path = f"{base_path}.protection"
 
@@ -349,8 +360,7 @@ def core_verify_signature(doc_path: str) -> tuple[bool, str]:
         return False, "Document is not signed"
 
     try:
-        # Read protection data
-        with open(metadata_path) as f:
+        with open(metadata_path, encoding="utf-8") as f:
             protection_data = json.load(f)
 
         if protection_data.get("type") != "signature":
@@ -359,19 +369,16 @@ def core_verify_signature(doc_path: str) -> tuple[bool, str]:
                 f"Document is protected with {protection_data.get('type')} protection, not a signature",
             )
 
-        # Get the original content hash
         signature_info = protection_data.get("signature", {})
         original_hash = signature_info.get("content_hash")
 
         if not original_hash:
             return False, "Invalid signature: missing content hash"
 
-        # Calculate current content hash
-        doc = Document(doc_path)
-        text_content = "\n".join([p.text for p in doc.paragraphs])
+        with document_context(doc_path, mode="read") as doc:
+            text_content = "\n".join([p.text for p in doc.paragraphs])
         current_hash = hashlib.sha256(text_content.encode()).hexdigest()
 
-        # Compare hashes
         if current_hash != original_hash:
             return (
                 False,
@@ -383,5 +390,45 @@ def core_verify_signature(doc_path: str) -> tuple[bool, str]:
             f"Document signature is valid. Signed by {signature_info.get('signer')} on {signature_info.get('timestamp')}",
         )
 
-    except (OSError, json.JSONDecodeError, KeyError) as e:
+    except (
+        OSError,
+        json.JSONDecodeError,
+        KeyError,
+        DocumentProcessingError,
+        FileOperationError,
+    ) as e:
         return False, f"Error verifying signature: {str(e)}"
+
+
+def remove_protection_info(
+    filename: str, password: str | None = None
+) -> tuple[bool, str]:
+    """Remove protection metadata and decrypt the document if encrypted."""
+    base_path, _ = os.path.splitext(filename)
+    metadata_path = f"{base_path}.protection"
+
+    if not os.path.exists(metadata_path):
+        return False, "Document is not protected"
+
+    try:
+        with open(metadata_path, encoding="utf-8") as f:
+            protection_data = json.load(f)
+
+        if password and protection_data.get("password_hash"):
+            if not verify_password(password, protection_data.get("password_hash", "")):
+                return False, "Incorrect password"
+
+        if protection_data.get("true_encryption") and password:
+            try:
+                core_unprotect_document(filename, password)
+            except (
+                ValidationError,
+                DocumentProcessingError,
+                FileOperationError,
+            ) as exc:
+                return False, f"Failed to decrypt document: {exc}"
+
+        os.remove(metadata_path)
+        return True, "Protection removed successfully"
+    except Exception as exc:
+        return False, f"Error removing protection: {exc}"

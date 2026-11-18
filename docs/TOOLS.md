@@ -740,42 +740,40 @@ Convert a Word document to PDF format.
 ### `add_header`
 
 ```python
-add_header(filename: str = '', text: str = '', section_index: int = 0, file_path: str | None = None) -> dict[str, typing.Any]
+add_header(filename: str, text: str, section_index: int = 0) -> dict[str, typing.Any]
 ```
 
 Add or update the primary header of a specific section in the document.
 
 **Parameters:**
 
-- `filename` (str): Output document or target file path (primary parameter, accepts `filename` or `file_path`).
-- `file_path` (str, optional): Alias for `filename`.
+- `filename` (str): Target document file path.
 - `text` (str): Text content for the header
 - `section_index` (int, optional): Index of the section (0-based, default: 0)
 
 **Returns:**
 
-- dict: Contains `status`, `message`, and `file_path`
+- dict: Contains `status`, `message`, and `filename`
 
 ---
 
 ### `add_footer`
 
 ```python
-add_footer(filename: str = '', text: str = '', section_index: int = 0, file_path: str | None = None) -> dict[str, typing.Any]
+add_footer(filename: str, text: str, section_index: int = 0) -> dict[str, typing.Any]
 ```
 
 Add or update the primary footer of a specific section in the document.
 
 **Parameters:**
 
-- `filename` (str): Output document or target file path (primary parameter, accepts `filename` or `file_path`).
-- `file_path` (str, optional): Alias for `filename`.
+- `filename` (str): Target document file path.
 - `text` (str): Text content for the footer
 - `section_index` (int, optional): Index of the section (0-based, default: 0)
 
 **Returns:**
 
-- dict: Contains `status`, `message`, and `file_path`
+- dict: Contains `status`, `message`, and `filename`
 
 ---
 
@@ -784,15 +782,14 @@ Add or update the primary footer of a specific section in the document.
 ### `add_hyperlink`
 
 ```python
-add_hyperlink(filename: str = '', paragraph_index: int = 0, text: str = '', url: str | None = None, bookmark: str | None = None, file_path: str | None = None) -> dict[str, typing.Any]
+add_hyperlink(filename: str, paragraph_index: int, text: str, url: str | None = None, bookmark: str | None = None) -> dict[str, typing.Any]
 ```
 
 Add a hyperlink to a specific paragraph.
 
 **Parameters:**
 
-- `filename` (str): Target document file path (primary parameter, accepts `filename` or `file_path`).
-- `file_path` (str, optional): Alias for `filename`.
+- `filename` (str): Target document file path.
 - `paragraph_index` (int): Index of the paragraph (0-based)
 - `text` (str): Display text for the hyperlink
 - `url` (str, optional): Target URL (required if bookmark is not provided)
@@ -800,28 +797,27 @@ Add a hyperlink to a specific paragraph.
 
 **Returns:**
 
-- dict: Contains `status`, `message`, and `file_path`
+- dict: Contains `status`, `message`, and `filename`
 
 ---
 
 ### `add_bookmark`
 
 ```python
-add_bookmark(filename: str = '', paragraph_index: int = 0, name: str = '', file_path: str | None = None) -> dict[str, typing.Any]
+add_bookmark(filename: str, paragraph_index: int, name: str) -> dict[str, typing.Any]
 ```
 
 Add a bookmark to a specific paragraph to enable internal linking.
 
 **Parameters:**
 
-- `filename` (str): Target document file path (primary parameter, accepts `filename` or `file_path`).
-- `file_path` (str, optional): Alias for `filename`.
+- `filename` (str): Target document file path.
 - `paragraph_index` (int): Index of the paragraph (0-based)
 - `name` (str): Name of the bookmark
 
 **Returns:**
 
-- dict: Contains `status`, `message`, and `file_path`
+- dict: Contains `status`, `message`, and `filename`
 
 ---
 
@@ -830,34 +826,32 @@ Add a bookmark to a specific paragraph to enable internal linking.
 ### `get_core_properties`
 
 ```python
-get_core_properties(file_path: str = '', filename: str | None = None) -> dict[str, typing.Any]
+get_core_properties(filename: str) -> dict[str, typing.Any]
 ```
 
 Get the core metadata properties of the document (author, title, etc.).
 
 **Parameters:**
 
-- `filename` (str, optional): Target document file path (accepts `filename` or `file_path`).
-- `file_path` (str): Path to the Word document
+- `filename` (str): Target document file path.
 
 **Returns:**
 
-- dict: Contains `status` and `properties` object
+- dict: Contains `status`, `properties`, and `filename`
 
 ---
 
 ### `set_core_properties`
 
 ```python
-set_core_properties(file_path: str = '', author: str | None = None, title: str | None = None, subject: str | None = None, keywords: str | None = None, comments: str | None = None, category: str | None = None, filename: str | None = None) -> dict[str, typing.Any]
+set_core_properties(filename: str, author: str | None = None, title: str | None = None, subject: str | None = None, keywords: str | None = None, comments: str | None = None, category: str | None = None) -> dict[str, typing.Any]
 ```
 
 Set the core metadata properties of the document.
 
 **Parameters:**
 
-- `filename` (str, optional): Target document file path (accepts `filename` or `file_path`).
-- `file_path` (str): Path to the Word document
+- `filename` (str): Target document file path.
 - `author` (str, optional): Document author
 - `title` (str, optional): Document title
 - `subject` (str, optional): Document subject
@@ -867,28 +861,28 @@ Set the core metadata properties of the document.
 
 **Returns:**
 
-- dict: Contains `status`, `message`, and `file_path`
+- dict: Contains `status`, `message`, and `filename`
 
 ---
 
 ### `set_page_layout`
 
 ```python
-set_page_layout(filename: str = '', section_index: int = 0, orientation: str = 'portrait', file_path: str | None = None, page_size: str = 'letter') -> dict[str, typing.Any]
+set_page_layout(filename: str, section_index: int = 0, orientation: str = 'portrait', page_size: str = 'letter') -> dict[str, typing.Any]
 ```
 
 Set the page layout orientation (portrait or landscape) for a specific section.
 
 **Parameters:**
 
-- `filename` (str): Target document file path (primary parameter, accepts `filename` or `file_path`).
-- `file_path` (str, optional): Alias for `filename`.
+- `filename` (str): Target document file path.
 - `section_index` (int, optional): Index of the section (0-based, default: 0)
 - `orientation` (str, optional): Page orientation ("portrait" or "landscape", default: "portrait")
+- `page_size` (str, optional): Page size (e.g., "letter", "a4", default: "letter")
 
 **Returns:**
 
-- dict: Contains `status`, `message`, and `file_path`
+- dict: Contains `status`, `message`, and `filename`
 
 ---
 

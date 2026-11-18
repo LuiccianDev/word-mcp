@@ -6,8 +6,10 @@ including custom exceptions and utilities for error handling.
 
 from .exception_core import (
     ConfigurationError,
+    ContextualFileNotFoundError,
     DocumentProcessingError,
     FileOperationError,
+    SecurityError,
     StyleError,
     ValidationError,
 )
@@ -18,6 +20,8 @@ __all__ = [
     "DocumentProcessingError",
     "ValidationError",
     "FileOperationError",
+    "SecurityError",
+    "ContextualFileNotFoundError",
     "StyleError",
     "ConfigurationError",
     "exception_tools",

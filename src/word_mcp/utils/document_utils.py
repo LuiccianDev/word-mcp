@@ -1,138 +1,105 @@
-"""
-Document utility functions for Word Document Server.
+"""Document utility functions for Word Document Server.
 
-This module provides utility functions for working with Word documents,
-including extracting text, structure, and copying documents.
+This module provides pure utility functions for extracting text and structure,
+generating atomic document copies, and normalizing .docx extensions.
 """
 
+from __future__ import annotations
+
+import contextlib
 import os
 import shutil
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from docx import Document
 from docx.document import Document as DocumentType
 
-from word_mcp.validation.document_validators import validate_docx_file
+
+def core_extract_document_text(doc: DocumentType) -> dict[str, Any]:
+    """Extract all non-empty paragraph and table text from an open Document."""
+    text_parts: list[str] = []
+
+    for paragraph in doc.paragraphs:
+        if paragraph.text.strip():
+            text_parts.append(paragraph.text)
+
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    if paragraph.text.strip():
+                        text_parts.append(paragraph.text)
+
+    return {"status": "success", "text": "\n".join(text_parts)}
 
 
-@validate_docx_file("filename")
-def extract_document_text(filename: str) -> dict[str, Any]:
-    """Extract all text from a Word document.
+def core_get_document_structure(doc: DocumentType) -> dict[str, Any]:
+    """Extract paragraph and table structure previews from an open Document."""
+    structure: dict[str, list[dict[str, Any]]] = {"paragraphs": [], "tables": []}
 
-    Args:
-        filename: Path to the Word document.
+    for para_idx, paragraph in enumerate(doc.paragraphs):
+        if not paragraph.text.strip():
+            continue
 
-    Returns:
-        Dict containing all text content from the document.
-        On error, returns an error message string.
-    """
-    try:
-        doc: DocumentType = Document(filename)
-        text_parts: list[str] = []
-
-        # Extract text from paragraphs
-        for paragraph in doc.paragraphs:
-            if paragraph.text.strip():
-                text_parts.append(paragraph.text)
-
-        # Extract text from tables
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        if paragraph.text.strip():
-                            text_parts.append(paragraph.text)
-
-        return {"status": "success", "text": "\n".join(text_parts)}
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to extract text: {str(e)}"}
-
-
-@validate_docx_file("filename")
-def get_document_structure(filename: str) -> dict[str, Any]:
-    """Get the structure of a Word document.
-
-    Args:
-        filename: Path to the Word document.
-
-    Returns:
-        Dict containing document structure including paragraphs and tables.
-        On error, returns a dict with an 'error' key.
-    """
-    try:
-        doc: DocumentType = Document(filename)
-        structure: dict[str, list[dict[str, Any]]] = {"paragraphs": [], "tables": []}
-
-        # Get paragraphs with preview text
-        for para_idx, paragraph in enumerate(doc.paragraphs):
-            if not paragraph.text.strip():
-                continue
-
-            preview_text: str = paragraph.text[:100] + (
-                "..." if len(paragraph.text) > 100 else ""
-            )
-
-            structure["paragraphs"].append(
-                {
-                    "index": para_idx,
-                    "text": preview_text,
-                    "style": paragraph.style.name if paragraph.style else "Normal",
-                }
-            )
-
-        # Get tables with preview data
-        for table_idx, table in enumerate(doc.tables):
-            table_data: dict[str, Any] = {
-                "index": table_idx,
-                "rows": len(table.rows),
-                "columns": len(table.columns),
-                "preview": [],
+        preview_text = paragraph.text[:100] + (
+            "..." if len(paragraph.text) > 100 else ""
+        )
+        structure["paragraphs"].append(
+            {
+                "index": para_idx,
+                "text": preview_text,
+                "style": paragraph.style.name if paragraph.style else "Normal",
             }
+        )
 
-            # Get sample of table data (first 3 rows x first 3 columns)
-            max_preview_rows: int = min(3, len(table.rows))
-            max_preview_cols: int = min(3, len(table.columns))
-
-            for row_idx in range(max_preview_rows):
-                row_data: list[str] = []
-                for col_idx in range(max_preview_cols):
-                    try:
-                        cell_text: str = table.cell(row_idx, col_idx).text
-                        preview_text = cell_text[:20] + (
-                            "..." if len(cell_text) > 20 else ""
-                        )
-                        row_data.append(preview_text)
-                    except IndexError:
-                        row_data.append("N/A")
-
-                if row_data:  # Only add non-empty rows
-                    table_data["preview"].append(row_data)
-            structure["tables"].append(table_data)
-
-        return structure
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Failed to get document structure: {str(e)}",
+    for table_idx, table in enumerate(doc.tables):
+        table_data: dict[str, Any] = {
+            "index": table_idx,
+            "rows": len(table.rows),
+            "columns": len(table.columns),
+            "preview": [],
         }
+
+        max_preview_rows = min(3, len(table.rows))
+        max_preview_cols = min(3, len(table.columns))
+
+        for row_idx in range(max_preview_rows):
+            row_data: list[str] = []
+            for col_idx in range(max_preview_cols):
+                try:
+                    cell_text = table.cell(row_idx, col_idx).text
+                    preview_text = cell_text[:20] + (
+                        "..." if len(cell_text) > 20 else ""
+                    )
+                    row_data.append(preview_text)
+                except IndexError:
+                    row_data.append("N/A")
+
+            if row_data:
+                table_data["preview"].append(row_data)
+        structure["tables"].append(table_data)
+
+    return structure
+
+
+def extract_document_text(filename: str) -> dict[str, Any]:
+    """Extract all text from a Word document in a single open."""
+    doc = Document(filename)
+    return core_extract_document_text(doc)
+
+
+def get_document_structure(filename: str) -> dict[str, Any]:
+    """Get the structure of a Word document in a single open."""
+    doc = Document(filename)
+    return core_get_document_structure(doc)
 
 
 def create_document_copy(
     source_path: str, dest_path: str | None = None
 ) -> tuple[bool, str, str | None]:
-    """Create a copy of a document.
-
-    If `dest_path` is not provided, a new filename is generated by appending
-    '_copy' to the original filename.
-
-    Args:
-        source_path: The path to the source document.
-        dest_path: Optional path for the new document.
-
-    Returns:
-        A tuple containing a boolean for success, a status message, and the
-        path to the new file if successful.
-    """
+    """Create a copy of a document atomically via sibling temp replacement."""
     if not os.path.exists(source_path):
         return False, f"Source document '{source_path}' does not exist.", None
 
@@ -140,25 +107,29 @@ def create_document_copy(
         base, ext = os.path.splitext(source_path)
         dest_path = f"{base}_copy{ext}"
 
+    target = Path(dest_path)
+    if not target.parent.exists():
+        return False, f"Parent directory '{target.parent}' does not exist.", None
+
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(target.parent),
+        prefix=f".{target.stem}.",
+        suffix=target.suffix or ".tmp",
+    )
+    os.close(fd)
+    tmp_path = Path(tmp_name)
     try:
-        shutil.copy2(source_path, dest_path)
+        shutil.copy2(source_path, str(tmp_path))
+        os.replace(tmp_path, target)
         return True, f"Document successfully copied to '{dest_path}'.", dest_path
-    except (OSError, shutil.Error) as e:
-        return False, f"Failed to copy document: {e}", None
+    except (OSError, shutil.Error) as exc:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
+        return False, f"Failed to copy document: {exc}", None
 
 
 def ensure_docx_extension(filename: str) -> str:
-    """Ensures a filename has a .docx extension.
-
-    If the filename does not already end with '.docx', the extension is appended.
-    This is case-sensitive.
-
-    Args:
-        filename: The filename to check and modify if necessary.
-
-    Returns:
-        The filename with the .docx extension.
-    """
+    """Ensure a filename has a .docx extension (case-insensitive check)."""
     if not filename.lower().endswith(".docx"):
         return filename + ".docx"
     return filename

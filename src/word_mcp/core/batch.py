@@ -7,7 +7,6 @@ tables, lists, and headings to be generated in a single pass.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -28,7 +27,7 @@ from word_mcp.core.presets import (
     resolve_page_size,
     resolve_profile,
 )
-from word_mcp.utils.security import is_path_in_allowed_directories
+from word_mcp.validation.document_validators import PathAccess, validate_path
 
 
 ALIGNMENT_MAP = {
@@ -438,14 +437,9 @@ def render_element(doc: DocumentType, elem: dict[str, Any]) -> str:
 
     elif elem_type in ("image", "picture"):
         raw_path = elem.get("path") or elem.get("image_path")
-        if not raw_path or not isinstance(raw_path, str):
-            raise ValueError("Image element requires a non-empty 'path' string.")
-        abs_path = os.path.abspath(raw_path)
-        allowed, reason = is_path_in_allowed_directories(abs_path)
-        if not allowed:
-            raise ValueError(f"Image path not allowed: {reason}")
-        if not os.path.exists(abs_path):
-            raise FileNotFoundError(f"Image file not found: {abs_path}")
+        resolved_img = validate_path(
+            raw_path, PathAccess.SANDBOX_FILE_READ, param_name="image.path"
+        )
 
         width = elem.get("width")
         if width is not None and float(width) <= 0:
@@ -457,9 +451,9 @@ def render_element(doc: DocumentType, elem: dict[str, Any]) -> str:
             p.alignment = ALIGNMENT_MAP[align_str]
         run = p.add_run()
         if width is not None:
-            run.add_picture(abs_path, width=Inches(float(width)))
+            run.add_picture(str(resolved_img), width=Inches(float(width)))
         else:
-            run.add_picture(abs_path)
+            run.add_picture(str(resolved_img))
 
         caption = elem.get("caption")
         if caption:

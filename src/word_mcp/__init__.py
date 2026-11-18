@@ -24,6 +24,7 @@ from word_mcp.exception import (
     DocumentProcessingError,
     ExceptionTool,
     FileOperationError,
+    SecurityError,
     StyleError,
     ValidationError,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "DocumentProcessingError",
     "ExceptionTool",
     "FileOperationError",
+    "SecurityError",
     "StyleError",
     "ValidationError",
 ]

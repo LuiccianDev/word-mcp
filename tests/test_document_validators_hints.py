@@ -1,4 +1,4 @@
-"""Tests for actionable hint guidance in document validators."""
+"""Tests for actionable OperationError guidance in document validators."""
 
 from pathlib import Path
 
@@ -9,44 +9,60 @@ from word_mcp.validation.document_validators import (
 )
 
 
-def test_validate_docx_path_missing_file_includes_hint(tmp_path: Path):
+def _assert_operation_error(
+    result: dict[str, object], *, expected_type: str, recoverable: bool
+) -> None:
+    assert result["status"] == "error"
+    assert result["error_type"] == expected_type
+    assert result["recoverable"] is recoverable
+    assert isinstance(result["message"], str) and result["message"]
+    assert isinstance(result["suggestion"], str) and result["suggestion"]
+
+
+def test_validate_docx_path_missing_file_includes_hint(tmp_path: Path) -> None:
     missing = tmp_path / "missing.docx"
     result = _validate_docx_path(str(missing))
     assert result is not None
-    assert "does not exist" in result["error"]
-    assert "hint" in result
-    assert "create_document" in result["hint"]
+    _assert_operation_error(result, expected_type="file_not_found", recoverable=False)
+    assert "does not exist" in result["message"]
+    assert "create_document" in str(result["suggestion"])
 
 
-def test_validate_docx_path_wrong_extension_includes_hint(tmp_path: Path):
+def test_validate_docx_path_wrong_extension_includes_hint(tmp_path: Path) -> None:
     txt = tmp_path / "notes.txt"
     txt.write_text("hello", encoding="utf-8")
     result = _validate_docx_path(str(txt))
     assert result is not None
-    assert "not a .docx" in result["error"]
-    assert ".docx" in result["hint"]
+    _assert_operation_error(result, expected_type="validation", recoverable=False)
+    assert "not a .docx" in result["message"]
+    assert ".docx" in str(result["suggestion"])
 
 
-def test_validate_docx_path_corrupt_file_includes_hint(tmp_path: Path):
+def test_validate_docx_path_corrupt_file_includes_hint(tmp_path: Path) -> None:
     bad = tmp_path / "corrupt.docx"
     bad.write_bytes(b"not a zip")
     result = _validate_docx_path(str(bad))
     assert result is not None
-    assert "not a valid Word document" in result["error"]
-    assert "hint" in result
+    _assert_operation_error(
+        result, expected_type="document_processing", recoverable=True
+    )
+    assert "not a valid Word document" in result["message"]
 
 
-async def test_validate_docx_read_returns_hint_for_missing_file(tmp_path: Path):
+async def test_validate_docx_read_returns_hint_for_missing_file(
+    tmp_path: Path,
+) -> None:
     @validate_docx_read("filename")
     async def dummy(filename: str) -> dict[str, str]:
         return {"status": "ok"}
 
     result = await dummy(filename=str(tmp_path / "nope.docx"))
-    assert "error" in result
-    assert "hint" in result
+    _assert_operation_error(result, expected_type="file_not_found", recoverable=False)
 
 
-async def test_validate_file_write_returns_hint_on_unwriteable_target(tmp_path: Path):
+async def test_validate_file_write_returns_hint_on_unwriteable_target(
+    tmp_path: Path,
+) -> None:
     from docx import Document
 
     doc_path = tmp_path / "locked.docx"
@@ -65,5 +81,5 @@ async def test_validate_file_write_returns_hint_on_unwriteable_target(tmp_path: 
     finally:
         dv._check_file_writeable = orig
 
-    assert "error" in result
-    assert "hint" in result
+    _assert_operation_error(result, expected_type="file_operation", recoverable=True)
+    assert "Permission denied" in result["message"]
