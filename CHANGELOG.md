@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [3.2.0] - 2026-11-18
+
 ### Added
 - Added `SecurityError` and contextual `suggestion`/`details` fields on domain exceptions (`ContextualFileNotFoundError`, `DocumentProcessingError`, `ValidationError`, `FileOperationError`, `StyleError`, `ConfigurationError`).
 - Added declarative `PathAccess` / `PathRule` boundary validation (`tool_boundary`) and `atomic_write_target` same-directory temporary file replacement (`os.replace`) across `document_context`, document creation/copy/merge, and protection/unprotect writers.
