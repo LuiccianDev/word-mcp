@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [3.1.0] - 2026-11-18
+
 ### Added
 - Styled GitHub-style callout boxes (`note`, `tip`, `important`, `warning`, `caution`) in `build_document`, `batch_add_content`, and `create_from_markdown` (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) rendered as shaded 1x1 tables with colored left accent borders.
 - Centralized `stderr`-only logging configuration (`WORD_MCP_LOG_LEVEL`) and developer diagnostics mode (`WORD_MCP_DEV_MODE`).
