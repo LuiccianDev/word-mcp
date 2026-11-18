@@ -4,7 +4,7 @@ This document provides a comprehensive reference for all tools available in the 
 
 > **Note:** Tool names are descriptive and do not use a namespace prefix (for example, `create_document`).
 >
-> **Compound Mode (Default):** By default (`WORD_MCP_TOOLS=compound`), the server exposes 9 tools (`build_document`, `create_from_markdown`, `batch_add_content`, `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to minimize context overhead. Set `WORD_MCP_TOOLS=full` (or `granular`) to register all 40 individual tools below. Context-efficient compound actions include `word_document` (`read_range`, `get_tables`) and `word_content` (`batch_edit`).
+> **Compound Mode (Default):** By default (`WORD_MCP_TOOLS=compound`), the server exposes 9 tools (`build_document`, `create_from_markdown`, `batch_add_content`, `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to minimize context overhead. Calling any of the 6 domain tools with `action="help"` returns full `required` and `optional` parameter schemas for all actions in that domain in a single call (or pass `params={"action": "<name>"}` to inspect one action), and `file_path` is automatically normalized to `filename`. Set `WORD_MCP_TOOLS=full` (or `granular`) to register all 40 individual tools below. Context-efficient compound actions include `word_document` (`read_range`, `get_tables`) and `word_content` (`batch_edit`).
 
 ## Table of Contents
 
@@ -907,17 +907,19 @@ Example:
 
 ## Error Handling
 
-All tools return a consistent error format:
+All tools and path validators return the canonical `OperationError` format:
 
 ```json
 {
   "status": "error",
+  "error_type": "file_not_found",
   "message": "Descriptive error message",
-  "error_type": "FileNotFoundError",
-  "suggestion": "Suggested solution if available",
-  "recoverable": true
+  "suggestion": "Actionable remediation hint",
+  "recoverable": false
 }
 ```
+
+Standard `error_type` values include `security_violation` (path outside `WORD_MCP_DIRS`), `validation`, `file_not_found`, `permission_denied`, `document_processing`, `file_operation`, `style`, and `configuration`.
 
 ---
 

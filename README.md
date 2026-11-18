@@ -23,13 +23,13 @@ Designed from the ground up for maximum token efficiency, it replaces chatty mic
 
 ## Key Architectural Highlights
 
-- **Compound Mode by Default (v3.0.0)**: Registers 9 tools by default (`build_document`, `create_from_markdown`, `batch_add_content`, plus 6 action-dispatched domain tools: `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to reduce tool-schema context overhead by 77.5%. Set `WORD_MCP_TOOLS=full` (or `granular`) to expose all 40 individual tools.
+- **Compound Mode & Single-Turn Discovery (v3.2.0)**: Registers 9 tools by default (`build_document`, `create_from_markdown`, `batch_add_content`, plus 6 action-dispatched domain tools: `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to reduce tool-schema context overhead by 77.5%. Calling any domain tool with `action="help"` returns full `required` and `optional` parameter schemas for all actions in a single call. Set `WORD_MCP_TOOLS=full` (or `granular`) to expose all 40 individual tools.
 - **Single-Pass Document Builder**: Create complete, publication-ready documents (headers, footers, dynamic `PAGE` numbers, margins, headings, markdown styling, styled callout boxes, tables, TOCs, images, and lists) in **one single MCP call** (`build_document`).
 - **Markdown Direct Generation**: Turn structured Markdown into styled Word documents in one pass (`create_from_markdown`), including tables, nested lists, inline links, and GitHub-style alert callouts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`).
 - **Visual Design Presets**: Built-in typography and spacing standards (`modern`, `formal`, `academic`, `compact`, `report`, `apa`) with optional `font_name`, `font_size`, and `page_size` overrides.
 - **Lightweight Outline Inspection**: Extract paragraph previews and table counts without dumping full body text (`get_document_outline`), saving thousands of context tokens.
 - **Batch Content Ingestion**: Append multiple sections, tables, callouts, and lists to existing documents in a single atomic operation (`batch_add_content`).
-- **Protection & Security**: Password encryption, editing restrictions, file integrity checks, and headless PDF export.
+- **Sandbox Security, Atomic Persistence & Unified Errors**: Enforces `WORD_MCP_DIRS` across all 40 tools and secondary path parameters (`SecurityError`), stages writes through same-directory temporary files with atomic `os.replace`, and standardizes all failures under `OperationError`. Includes `msoffcrypto` password encryption, editing restrictions, signature markers, and headless PDF export.
 - **Complete Tool Reference**: See [`docs/TOOLS.md`](docs/TOOLS.md) for every tool signature, return shape, and parameter contract.
 - **Zero-Install Execution**: Instant launch with `uvx luiccian-word-mcp`.
 
@@ -170,7 +170,7 @@ All runtime configuration is supplied via standard OS environment variables or t
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `WORD_MCP_DIRS` | *(current directory)* | Comma-separated list of allowed root directories for reading, writing, and listing `.docx` files. Legacy `MCP_ALLOWED_DIRECTORIES` remains supported as a fallback. |
+| `WORD_MCP_DIRS` | `./documents` | Comma-separated list of allowed root directories for reading, writing, and listing `.docx`, `.pdf`, and image files across all primary and secondary path arguments. Legacy `MCP_ALLOWED_DIRECTORIES` remains supported as a fallback. |
 | `WORD_MCP_TOOLS` | `compound` | Tool surface mode: `compound` (9 tools: 3 single-pass + 6 domain dispatchers) or `full` (or `granular`, all 40 tools). Legacy `WORD_MCP_TOOL_MODE` remains supported as a fallback. |
 | `WORD_MCP_LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) written strictly to `stderr`. |
 | `WORD_MCP_DEV_MODE` | `false` | Set to `true` to default logging to `DEBUG` and log full exception tracebacks to `stderr`. |

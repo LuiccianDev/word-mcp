@@ -85,6 +85,12 @@ To guarantee consistency, cleanliness, and maintainability across the project:
 - **Constants:** `SCREAMING_SNAKE_CASE` (`DEFAULT_PAGE_SIZE`, `MAX_TABLE_ROWS`).
 - **Automation Scripts:** Strictly `kebab-case.py` in `scripts/` (e.g., `bump-version.py`, `extract-release-notes.py`).
 
+### 3. Boundary Validation, Atomic Persistence & Error Contract (v3.2.0+)
+- **Sandbox-First Boundary (`@tool_boundary` & `PathRule`):** All tool path parameters (primary, optional, `list[str]`, directory, and secondary arguments such as `destination_filename`, `source_filenames`, `output_filename`, `image_path`, and batch `image` elements) must be validated through `word_mcp.validation.document_validators` (`validate_path` / `resolve_sandboxed_path`) **before** any filesystem existence probe, directory creation, or ZIP check.
+- **Single-Open & Atomic Writes (`atomic_write_target`):** Pre-flight checks use `_fast_check_ooxml_zip` (`word/document.xml` and `[Content_Types].xml` inspection without XML DOM parsing) so `document_context` opens `docx.Document` only once per tool call. All `.docx` and `.protection` writes must stage to a sibling temporary file in the target directory and replace atomically via `atomic_write_target` (`os.replace`).
+- **Canonical Error Envelope (`OperationError`):** Every tool and validator failure (outside FastMCP `ToolError` dispatch diagnostics) must be routed through `ExceptionTool.handle_error` and return the `OperationError` schema (`status="error"`, `error_type`, `message`, `suggestion`, `recoverable`). Never return ad-hoc `{"error", "hint"}` or bare `{"status": "error", "message": ...}` dicts.
+- **Compound Dispatch (`ActionSpec`):** Tools dispatched by `compound_tools.py` must declare required parameters without placeholder `""` defaults so `ActionSpec` and `docs/TOOLS.md` stay synchronized via `scripts/sync-tools-reference.py`. Calling `action="help"` with no `params` returns the full required/optional parameter schema for all actions in the domain group in a single call.
+
 ---
 
 ## 5. Optimization of Minutes and Compute in GitHub Actions

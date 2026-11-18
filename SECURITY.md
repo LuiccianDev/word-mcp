@@ -12,25 +12,26 @@ Only the latest major version branch receives active security updates and vulner
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| **3.x.x** | :white_check_mark: Yes | Current major branch after the 3.0.0 release |
-| **2.x.x** | :x: No | Superseded by 3.0.0; prefixed tool aliases were removed |
-| **1.x.x** | :x: No | Deprecated legacy `mcp_word` release |
+| **3.x.x** | Yes | Current major branch (latest release: `3.2.0`) |
+| **2.x.x** | No | Superseded by 3.0.0; prefixed tool aliases were removed |
+| **1.x.x** | No | Deprecated legacy `mcp_word` release |
 
 ---
 
 ## Security Architecture & Defenses
 
 ### 1. Directory Sandboxing (`WORD_MCP_DIRS`)
-By default or via configuration, Word MCP limits document reading, writing, and conversions strictly to explicit allowed directories:
-- The server canonicalizes all filesystem paths via `os.path.realpath` and `pathlib.Path.resolve()`.
-- Directory traversal attacks using relative dot-segments (`../`, `..\\`) are detected and blocked with `SecurityError` before any file handle is opened.
+By default (`./documents`) or via configuration, Word MCP limits document reading, writing, listing, image insertion, and PDF conversions strictly to explicit allowed directories:
+- `resolve_sandboxed_path` and `@tool_boundary` validate all primary and secondary path arguments (`filename`, `source_filename`, `destination_filename`, `target_filename`, `source_filenames`, `output_filename`, `image_path`, `directory`, and batch `image` elements) before any filesystem check or directory creation occurs.
+- Empty/whitespace paths and strings containing NUL bytes (`\x00`) are rejected before resolution, and paths are canonicalized via `pathlib.Path.resolve()`.
+- Directory traversal attempts (`../`, `..\\`) and symlink escapes outside `WORD_MCP_DIRS` are blocked with `SecurityError` (`error_type="security_violation"`, `recoverable=False`) before any file handle is opened.
 
 ### 2. Password Protection and Protection Metadata
-- `protect_document` encrypts the OOXML container with `msoffcrypto-tool`. The password is not stored in the document or in this repository.
-- `unprotect_document` decrypts the container and returns `Incorrect password` when the key is invalid.
+- `protect_document` encrypts the OOXML container with `msoffcrypto-tool` and replaces the target file atomically via `atomic_write_target`. The password is not stored in the document or in this repository.
+- `unprotect_document` decrypts the container atomically and returns `Incorrect password` (`error_type="validation"`) when the key is invalid.
 - `add_restricted_editing` and `add_digital_signature` write a sidecar JSON file named `<document>.protection` next to the `.docx`. The sidecar stores a salted PBKDF2-HMAC-SHA-256 hash of the password for restricted-editing verification using a unique cryptographic salt per document and constant-time comparison. The `.protection` file is advisory metadata for MCP clients and does not replace native OOXML encryption (`protect_document`).
 - `add_digital_signature` writes a visible signature block and stores a SHA-256 hash of the paragraph text. It detects text changes after signing. It is **not a cryptographic signature** and does not verify signer identity.
-- `verify_document` reads the sidecar metadata only. It does not validate OOXML package signatures.
+- `verify_document` checks the `.protection` sidecar metadata when present, and falls back to `msoffcrypto` container inspection (and optional password verification) for password-encrypted `.docx` files. It does not validate cryptographic OOXML package signatures.
 
 ### 3. Safe Subprocess Execution
 - Subprocess invocations (such as LibreOffice headless PDF conversion) use argument lists directly rather than `shell=True` to eliminate shell injection vulnerabilities.
