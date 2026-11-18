@@ -8,26 +8,29 @@ import sys
 
 
 VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+_LOG_LEVEL_ALIASES = {"WARN": "WARNING"}
 
 
 def is_dev_mode() -> bool:
-    """Return True when WORD_MCP_DEV_MODE or DEV_MODE is enabled."""
-    raw = os.environ.get("WORD_MCP_DEV_MODE") or os.environ.get("DEV_MODE") or "false"
-    return raw.strip().lower() in ("1", "true", "yes", "on")
+    """Return True when WORD_MCP_DEV_MODE is enabled."""
+    raw = (os.environ.get("WORD_MCP_DEV_MODE") or "false").strip().lower()
+    return raw in ("1", "true", "yes", "on")
 
 
 def resolve_log_level(explicit_level: str | None = None) -> int:
-    """Resolve the active logging level from explicit override or environment."""
+    """Resolve the active logging level from explicit override or WORD_MCP_LOG_LEVEL."""
     raw = (
         explicit_level
-        or os.environ.get("WORD_MCP_LOG_LEVEL")
-        or os.environ.get("LOG_LEVEL")
+        or (os.environ.get("WORD_MCP_LOG_LEVEL") or "").strip()
         or ("DEBUG" if is_dev_mode() else "INFO")
     ).strip().upper()
-    if raw not in VALID_LOG_LEVELS:
+    normalized = _LOG_LEVEL_ALIASES.get(raw, raw)
+    if normalized not in VALID_LOG_LEVELS:
         valid = ", ".join(VALID_LOG_LEVELS)
-        raise ValueError(f"Invalid LOG_LEVEL '{raw}'. Expected one of: {valid}.")
-    return int(getattr(logging, raw))
+        raise ValueError(
+            f"Invalid WORD_MCP_LOG_LEVEL '{raw}'. Expected one of: {valid}."
+        )
+    return int(getattr(logging, normalized))
 
 
 def configure_logging(log_level: str | None = None) -> logging.Logger:

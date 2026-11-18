@@ -172,8 +172,8 @@ All runtime configuration is supplied via standard OS environment variables or t
 | :--- | :--- | :--- |
 | `WORD_MCP_DIRS` | *(current directory)* | Comma-separated list of allowed root directories for reading, writing, and listing `.docx` files. Legacy `MCP_ALLOWED_DIRECTORIES` remains supported as a fallback. |
 | `WORD_MCP_TOOLS` | `compound` | Tool surface mode: `compound` (9 tools: 3 single-pass + 6 domain dispatchers) or `full` (or `granular`, all 40 tools). Legacy `WORD_MCP_TOOL_MODE` remains supported as a fallback. |
-| `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) written strictly to `stderr`. Also accepts `WORD_MCP_LOG_LEVEL`. |
-| `DEV_MODE` | `false` | Set to `true` to default logging to `DEBUG` and log full exception tracebacks to `stderr`. Also accepts `WORD_MCP_DEV_MODE`. |
+| `WORD_MCP_LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) written strictly to `stderr`. |
+| `WORD_MCP_DEV_MODE` | `false` | Set to `true` to default logging to `DEBUG` and log full exception tracebacks to `stderr`. |
 
 ---
 

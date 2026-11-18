@@ -4,6 +4,7 @@ across all MCP tools, including decorators, error mapping, and response builders
 """
 
 import logging
+import sys
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
@@ -151,7 +152,12 @@ class ExceptionTool:
             message = f"{message} ({', '.join(context)})"
 
         if is_dev_mode():
-            logger.error("%s", message, exc_info=exception)
+            exc_info: Exception | bool = (
+                exception
+                if exception.__traceback__ is not None
+                else sys.exc_info()[2] is not None
+            )
+            logger.error("%s", message, exc_info=exc_info)
 
         suggestion = ExceptionTool._get_suggestion(error_info["error_type"], exception)
 
