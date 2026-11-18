@@ -22,8 +22,7 @@ from word_mcp.tools.compound_tools import register_compound_tools
 
 
 _TOOL_MODE_ALIASES: dict[str, str] = {
-    "compact": "compact",
-    "compound": "compact",
+    "compound": "compound",
     "full": "full",
     "granular": "full",
 }
@@ -33,26 +32,26 @@ def get_tool_mode() -> str:
     """Return normalized tool registration mode from WORD_MCP_TOOLS.
 
     Reads ``WORD_MCP_TOOLS`` (falling back to legacy ``WORD_MCP_TOOL_MODE``)
-    and defaults to ``compact`` (9 tools).
+    and defaults to ``compound`` (9 tools).
     """
     raw_mode = (
         os.environ.get("WORD_MCP_TOOLS")
         or os.environ.get("WORD_MCP_TOOL_MODE")
-        or "compact"
+        or "compound"
     )
     mode = raw_mode.strip().lower()
     normalized = _TOOL_MODE_ALIASES.get(mode)
     if normalized is None:
         raise ValueError(
             f"Invalid WORD_MCP_TOOLS={mode!r}. "
-            "Expected one of: compact, full (aliases: compound, granular)"
+            "Expected one of: compound, full (alias: granular)"
         )
     return normalized
 
 
 def register_all_tools(mcp: FastMCP) -> None:
     """Register tools with the MCP server according to WORD_MCP_TOOLS."""
-    if get_tool_mode() == "compact":
+    if get_tool_mode() == "compound":
         register_compound_tools(mcp)
         return
 

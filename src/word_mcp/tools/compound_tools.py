@@ -1,6 +1,6 @@
 """Compact (compound) tool registrations for Word MCP.
 
-When ``WORD_MCP_TOOLS=compact`` (the default, also aliased as ``compound``),
+When ``WORD_MCP_TOOLS=compound`` (the default),
 these 9 tools replace the 40 full/granular tools: the 3 high-efficiency
 single-pass tools (``build_document``, ``create_from_markdown``,
 ``batch_add_content``) keep their full typed JSON schemas, while the remaining

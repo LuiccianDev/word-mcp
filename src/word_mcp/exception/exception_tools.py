@@ -3,11 +3,14 @@ This module provides tools and utilities for consistent exception handling
 across all MCP tools, including decorators, error mapping, and response builders.
 """
 
+import logging
+import sys
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
 from ..models.response_models import OperationError
+from ..utils.logging_config import is_dev_mode
 from .exception_core import (
     ConfigurationError,
     DocumentProcessingError,
@@ -15,6 +18,9 @@ from .exception_core import (
     StyleError,
     ValidationError,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class ExceptionTool:
@@ -144,6 +150,14 @@ class ExceptionTool:
         message = error_info["message"]
         if context:
             message = f"{message} ({', '.join(context)})"
+
+        if is_dev_mode():
+            exc_info: Exception | bool = (
+                exception
+                if exception.__traceback__ is not None
+                else sys.exc_info()[2] is not None
+            )
+            logger.error("%s", message, exc_info=exc_info)
 
         suggestion = ExceptionTool._get_suggestion(error_info["error_type"], exception)
 
