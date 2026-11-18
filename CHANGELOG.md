@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added `SecurityError` and contextual `suggestion`/`details` fields on domain exceptions (`ContextualFileNotFoundError`, `DocumentProcessingError`, `ValidationError`, `FileOperationError`, `StyleError`, `ConfigurationError`).
+- Added declarative `PathAccess` / `PathRule` boundary validation (`tool_boundary`) and `atomic_write_target` same-directory temporary file replacement (`os.replace`) across `document_context`, document creation/copy/merge, and protection/unprotect writers.
+- Added `resolve_sandboxed_path` with empty, whitespace, and NUL-byte validation and `ActionSpec` caching in `compound_tools` returning full per-action parameter schemas in a single `action="help"` call.
+
+### Changed
+- Unified tool, validator, and batch error payloads under the canonical `OperationError` schema (`status`, `error_type`, `message`, `suggestion`, `recoverable`).
+- Replaced full `Document()` XML DOM pre-flight parsing in validators with fast OOXML ZIP inspection (`_fast_check_ooxml_zip`) and pure `core_extract_document_text` / `core_get_document_structure` helpers for single-open reads.
+- Canonicalized `filename: str` as a required parameter on `add_hyperlink`, `add_bookmark`, `add_header`, `add_footer`, `set_page_layout`, `get_core_properties`, and `set_core_properties` (preserving `file_path` alias normalization in compound mode) and added boolean-as-numeric rejection for `int`/`float` parameters.
+- Updated `verify_document` to tolerate encrypted `.docx` files and report verification status via `ProtectionResult`.
+
+### Fixed
+- Fixed `msoffcrypto.OfficeFile.is_encrypted()` method invocation and password verification in `core_protect_document`, `core_unprotect_document`, and `core_verify_document_protection`.
+- Fixed Windows file-locking misattribution in `_fast_check_ooxml_zip` by opening `ZipFile` directly so `PermissionError` surfaces as `file_operation`.
+- Fixed `batch_tools` and `compound_tools` alias/conflict handling and ensured every compound group description includes a valid `example_params` payload.
+
+### Security
+- Enforced `WORD_MCP_DIRS` sandbox containment across all read/write/create decorators and secondary path parameters (`destination_filename`, `source_filenames`, `output_filename`, `image_path`, `directory`, and `build_document`/`batch_add_content` image elements).
+
+### Removed
+- Removed unused `ExceptionTool.wrap_tool_call`, `validate_docx_file`, and `check_file_writeable` helpers.
+
 ---
 
 ## [3.1.0] - 2026-11-18

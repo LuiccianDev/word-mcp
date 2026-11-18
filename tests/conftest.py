@@ -29,3 +29,13 @@ def sync_tools() -> ModuleType:
 @pytest.fixture(scope="session")
 def registered_tools(sync_tools: ModuleType) -> dict[str, object]:
     return sync_tools.registered_tools()
+
+
+@pytest.fixture(autouse=True)
+def _sandbox_tmp_path(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Point WORD_MCP_DIRS at tmp_path for tests that request tmp_path."""
+    if "tmp_path" in request.fixturenames:
+        tmp_path = request.getfixturevalue("tmp_path")
+        monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))

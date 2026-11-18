@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import difflib
 import inspect
+import json
+import types
 from collections.abc import Awaitable, Callable
-from typing import Any, get_type_hints
+from dataclasses import dataclass, field
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -32,13 +35,8 @@ from word_mcp.tools import (
 )
 
 
-_PARAMS_NOTE = (
-    "\nAll action parameters go inside `params`, e.g. "
-    '{"action": "create", "params": {"filename": "/path/doc.docx"}}. '
-    "Omit `params` for actions that take none, or use `action='help'` to inspect parameters."
-)
-
 _ToolFn = Callable[..., Awaitable[dict[str, Any]]]
+_PARAM_ALIASES: dict[str, str] = {"file_path": "filename"}
 _TYPE_ADAPTER_CACHE: dict[Any, TypeAdapter[Any]] = {}
 
 
@@ -59,30 +57,6 @@ def _get_resolved_hints(handler: _ToolFn) -> dict[str, Any]:
         return {}
 
 
-def _describe_action(handler: _ToolFn) -> dict[str, Any]:
-    """Extract required/optional parameter metadata and summary for an action."""
-    sig = inspect.signature(handler)
-    hints = _get_resolved_hints(handler)
-    required: dict[str, str] = {}
-    optional: dict[str, dict[str, Any]] = {}
-
-    for param in sig.parameters.values():
-        ann = hints.get(param.name, param.annotation)
-        type_str = _format_type_name(ann)
-        if param.default is inspect.Parameter.empty:
-            required[param.name] = type_str
-        else:
-            optional[param.name] = {"type": type_str, "default": param.default}
-
-    doc = inspect.getdoc(handler) or ""
-    summary = doc.splitlines()[0].strip() if doc else ""
-    return {
-        "description": summary,
-        "required": required,
-        "optional": optional,
-    }
-
-
 def _format_suggestion(target: str, candidates: list[str]) -> str:
     """Return a close-match hint string or empty string if none found."""
     matches = difflib.get_close_matches(target, candidates, n=2, cutoff=0.5)
@@ -93,87 +67,187 @@ def _format_suggestion(target: str, candidates: list[str]) -> str:
     return f" Did you mean one of: {', '.join(repr(m) for m in matches)}?"
 
 
-def _validate_param_types(
-    group: str, action: str, handler: _ToolFn, kwargs: dict[str, Any]
-) -> None:
-    """Validate parameter values against resolved annotations and raise ToolError."""
-    sig = inspect.signature(handler)
-    hints = _get_resolved_hints(handler)
-    for name, value in kwargs.items():
-        param = sig.parameters.get(name)
-        if param is None:
-            continue
-        ann = hints.get(name, param.annotation)
-        if ann is inspect.Parameter.empty or ann is Any:
-            continue
-        adapter = _TYPE_ADAPTER_CACHE.get(ann)
-        if adapter is None:
-            try:
-                adapter = TypeAdapter(ann)
-            except Exception:
-                continue
-            _TYPE_ADAPTER_CACHE[ann] = adapter
+def _expects_numeric_without_bool(annotation: Any) -> bool:
+    """Return True when annotation expects int/float without allowing bool."""
+    if annotation in (int, float):
+        return True
+    origin = get_origin(annotation)
+    if origin in (Union, types.UnionType):
+        non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
+        return any(arg in (int, float) for arg in non_none) and bool not in non_none
+    return False
+
+
+def _has_disallowed_bool(annotation: Any, value: Any) -> bool:
+    """Reject bool passed into int/float fields (and lists of int/float)."""
+    if _expects_numeric_without_bool(annotation):
+        return isinstance(value, bool)
+    origin = get_origin(annotation)
+    if origin in (list, tuple) and isinstance(value, (list, tuple)):
+        elem_args = get_args(annotation)
+        if elem_args and _expects_numeric_without_bool(elem_args[0]):
+            return any(isinstance(item, bool) for item in value)
+    return False
+
+
+def _get_type_adapter(annotation: Any) -> TypeAdapter[Any] | None:
+    if annotation is inspect.Parameter.empty or annotation is Any:
+        return None
+    adapter = _TYPE_ADAPTER_CACHE.get(annotation)
+    if adapter is None:
         try:
-            kwargs[name] = adapter.validate_python(value)
-        except PydanticValidationError as exc:
-            expected = _format_type_name(ann)
-            raise ToolError(
-                f"{group} action '{action}': Invalid type for '{name}': "
-                f"expected {expected}, got {type(value).__name__}"
-            ) from exc
+            adapter = TypeAdapter(annotation)
+        except Exception:
+            return None
+        _TYPE_ADAPTER_CACHE[annotation] = adapter
+    return adapter
 
 
-class _Params(dict[str, Any]):
-    """Action params wrapper that catches missing required and unknown keys."""
+@dataclass(frozen=True)
+class ActionSpec:
+    """Cached action metadata, alias mapping, and Pydantic validators."""
 
-    def __init__(
-        self,
-        group: str,
-        action: str,
-        params: dict[str, Any],
-        schema: dict[str, Any],
-    ) -> None:
-        super().__init__(params)
-        self._where = f"{group} action '{action}'"
-        self._schema = schema
-        self._read: set[str] = set()
+    name: str
+    handler: _ToolFn
+    description: str
+    required: dict[str, str]
+    optional: dict[str, dict[str, Any]]
+    parameters: tuple[inspect.Parameter, ...]
+    hints: dict[str, Any] = field(default_factory=dict)
 
-    def __getitem__(self, key: str) -> Any:
-        self._read.add(key)
-        return super().__getitem__(key)
+    @classmethod
+    def from_handler(cls, name: str, handler: _ToolFn) -> ActionSpec:
+        """Introspect signature, resolved type hints, and docstring summary once."""
+        sig = inspect.signature(handler)
+        hints = _get_resolved_hints(handler)
+        required: dict[str, str] = {}
+        optional: dict[str, dict[str, Any]] = {}
 
-    def __missing__(self, key: str) -> Any:
-        req = ", ".join(
-            f"{name} ({tp})" for name, tp in self._schema["required"].items()
-        ) or "none"
-        opt = ", ".join(self._schema["optional"]) or "none"
-        raise ToolError(
-            f"{self._where}: missing required parameter '{key}'. "
-            f"Required parameters: {req}. Optional parameters: {opt}."
+        for param in sig.parameters.values():
+            ann = hints.get(param.name, param.annotation)
+            type_str = _format_type_name(ann)
+            if param.default is inspect.Parameter.empty:
+                required[param.name] = type_str
+            else:
+                optional[param.name] = {"type": type_str, "default": param.default}
+
+        doc = inspect.getdoc(handler) or ""
+        summary = doc.splitlines()[0].strip() if doc else ""
+        return cls(
+            name=name,
+            handler=handler,
+            description=summary,
+            required=required,
+            optional=optional,
+            parameters=tuple(sig.parameters.values()),
+            hints=hints,
         )
 
-    def __contains__(self, key: object) -> bool:
-        if isinstance(key, str):
-            self._read.add(key)
-        return super().__contains__(key)
+    def to_help_dict(self) -> dict[str, Any]:
+        """Render complete schema metadata for single-round-trip discovery."""
+        return {
+            "description": self.description,
+            "required": dict(self.required),
+            "optional": dict(self.optional),
+        }
 
-    def check_all_read(self) -> None:
-        """Raise ToolError if any caller-supplied key was not consumed."""
-        unused = sorted(set(self) - self._read)
-        if unused:
-            valid = list(self._schema["required"]) + list(self._schema["optional"])
-            hints = "".join(_format_suggestion(key, valid) for key in unused)
-            valid_str = ", ".join(valid) or "none"
+    def bind_and_validate(self, group: str, raw_params: Any) -> dict[str, Any]:
+        """Normalize aliases, reject unknown/missing params, and validate/coerce types."""
+        where = f"{group} action '{self.name}'"
+        if raw_params is not None and not isinstance(raw_params, dict):
             raise ToolError(
-                f"{self._where}: unknown parameter(s) {unused}.{hints} "
+                f"{where}: `params` must be an object/dict, "
+                f"got {type(raw_params).__name__}"
+            )
+
+        params = dict(raw_params or {})
+        valid_names = {p.name for p in self.parameters}
+
+        for alias, canonical in _PARAM_ALIASES.items():
+            if alias in params and canonical in valid_names and alias not in valid_names:
+                if canonical in params:
+                    raise ToolError(
+                        f"{where}: provide either '{canonical}' or '{alias}', not both."
+                    )
+                params[canonical] = params.pop(alias)
+
+        unknown = sorted(set(params) - valid_names)
+        if unknown:
+            valid_list = list(self.required) + list(self.optional)
+            hints = "".join(_format_suggestion(key, valid_list) for key in unknown)
+            valid_str = ", ".join(valid_list) or "none"
+            raise ToolError(
+                f"{where}: unknown parameter(s) {unknown}.{hints} "
                 f"Valid parameters: {valid_str}."
             )
 
+        req_str = (
+            ", ".join(f"{k} ({tp})" for k, tp in self.required.items()) or "none"
+        )
+        opt_str = ", ".join(self.optional) or "none"
+        for req_name in self.required:
+            if req_name not in params:
+                raise ToolError(
+                    f"{where}: missing required parameter '{req_name}'. "
+                    f"Required parameters: {req_str}. Optional parameters: {opt_str}."
+                )
+
+        kwargs: dict[str, Any] = {}
+        for param in self.parameters:
+            if param.name not in params:
+                continue
+            value = params[param.name]
+            ann = self.hints.get(param.name, param.annotation)
+            if _has_disallowed_bool(ann, value):
+                expected = _format_type_name(ann)
+                raise ToolError(
+                    f"{where}: Invalid type for '{param.name}': "
+                    f"expected {expected}, got bool"
+                )
+            adapter = _get_type_adapter(ann)
+            if adapter is not None:
+                try:
+                    value = adapter.validate_python(value)
+                except PydanticValidationError as exc:
+                    expected = _format_type_name(ann)
+                    raise ToolError(
+                        f"{where}: Invalid type for '{param.name}': "
+                        f"expected {expected}, got {type(value).__name__}"
+                    ) from exc
+            kwargs[param.name] = value
+
+        return kwargs
+
+
+@dataclass(frozen=True)
+class CompoundGroupSpec:
+    """Declarative specification for one consolidated compound tool."""
+
+    name: str
+    summary: str
+    annotations: ToolAnnotations
+    actions: dict[str, _ToolFn]
+    example_action: str
+    example_params: dict[str, Any]
+
+
+_ACTION_SPEC_CACHE: dict[tuple[str, _ToolFn], ActionSpec] = {}
+
+
+def _get_action_spec(action: str, handler: _ToolFn) -> ActionSpec:
+    """Return cached ActionSpec for (action, handler)."""
+    key = (action, handler)
+    spec = _ACTION_SPEC_CACHE.get(key)
+    if spec is None:
+        spec = ActionSpec.from_handler(action, handler)
+        _ACTION_SPEC_CACHE[key] = spec
+    return spec
+
 
 def _handle_help(
-    group: str, actions: dict[str, _ToolFn], params: dict[str, Any] | None
+    group: str, actions: dict[str, _ToolFn], params: Any
 ) -> dict[str, Any]:
-    """Return overview or per-action parameter schema for a compound tool."""
+    """Return full parameter schemas for all actions in one call, or inspect one action."""
     if params is not None and not isinstance(params, dict):
         raise ToolError(
             f"{group} action 'help': `params` must be an object/dict, "
@@ -191,15 +265,41 @@ def _handle_help(
             raise ToolError(
                 f"Unknown action '{target}' for {group}.{suggestion} Valid: {valid}"
             )
-        return {"tool": group, "action": target, **_describe_action(actions[target])}
+        return {
+            "tool": group,
+            "action": target,
+            **_get_action_spec(target, actions[target]).to_help_dict(),
+        }
+
+    if params and "actions" in params:
+        subset = params["actions"]
+        if not isinstance(subset, list) or not all(
+            isinstance(name, str) and name in actions for name in subset
+        ):
+            valid = ", ".join(sorted(actions))
+            raise ToolError(
+                f"{group} action 'help': `actions` must be a list of valid action names ({valid})."
+            )
+        return {
+            "tool": group,
+            "actions": {
+                name: _get_action_spec(name, actions[name]).to_help_dict()
+                for name in subset
+            },
+            "aliases": dict(_PARAM_ALIASES),
+        }
 
     return {
         "tool": group,
         "actions": {
-            name: _describe_action(fn)["description"]
+            name: _get_action_spec(name, fn).to_help_dict()
             for name, fn in sorted(actions.items())
         },
-        "hint": "Call with action='help' and params={'action': '<name>'} for parameter details.",
+        "aliases": dict(_PARAM_ALIASES),
+        "hint": (
+            "Pass action='<name>' with the required params above, "
+            "or filter with params={'action': '<name>'}."
+        ),
     }
 
 
@@ -209,7 +309,7 @@ async def _dispatch(
     action: str,
     params: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Validate action/params against the underlying tool signature and invoke it."""
+    """Validate action/params against cached ActionSpec and invoke the handler."""
     if action == "help":
         return _handle_help(group, actions, params)
 
@@ -222,34 +322,8 @@ async def _dispatch(
             f"Valid: {valid}. Call with action='help' for parameter details."
         )
 
-    if params is not None and not isinstance(params, dict):
-        raise ToolError(
-            f"{group} action '{action}': `params` must be an object/dict, "
-            f"got {type(params).__name__}"
-        )
-
-    schema = _describe_action(handler)
-    validated = _Params(group, action, params or {}, schema)
-    sig = inspect.signature(handler)
-    unknown = sorted(set(validated) - set(sig.parameters))
-    if unknown:
-        valid_params: list[str] = list(schema["required"]) + list(schema["optional"])
-        hints = "".join(_format_suggestion(key, valid_params) for key in unknown)
-        valid_str = ", ".join(valid_params) or "none"
-        raise ToolError(
-            f"{group} action '{action}': unknown parameter(s) {unknown}.{hints} "
-            f"Valid parameters: {valid_str}."
-        )
-
-    kwargs: dict[str, Any] = {}
-    for param in sig.parameters.values():
-        if param.default is inspect.Parameter.empty:
-            kwargs[param.name] = validated[param.name]
-        elif param.name in validated:
-            kwargs[param.name] = validated[param.name]
-
-    validated.check_all_read()
-    _validate_param_types(group, action, handler, kwargs)
+    spec = _get_action_spec(action, handler)
+    kwargs = spec.bind_and_validate(group, params)
     return await handler(**kwargs)
 
 
@@ -311,85 +385,108 @@ _PROPERTY_ACTIONS: dict[str, _ToolFn] = {
     "set_page_layout": property_tools.set_page_layout,
 }
 
+_WRITE_ANNOTATIONS = ToolAnnotations(readOnlyHint=False)
+_DESTRUCTIVE_ANNOTATIONS = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
+
+_GROUP_SPECS: tuple[CompoundGroupSpec, ...] = (
+    CompoundGroupSpec(
+        name="word_document",
+        summary="Document lifecycle, inspection, search, merge, and PDF export.",
+        annotations=_WRITE_ANNOTATIONS,
+        actions=_DOCUMENT_ACTIONS,
+        example_action="create",
+        example_params={"filename": "/path/doc.docx"},
+    ),
+    CompoundGroupSpec(
+        name="word_content",
+        summary="Add, update, search/replace, or delete document content elements.",
+        annotations=_DESTRUCTIVE_ANNOTATIONS,
+        actions=_CONTENT_ACTIONS,
+        example_action="add_paragraph",
+        example_params={"filename": "/path/doc.docx", "text": "Hello world"},
+    ),
+    CompoundGroupSpec(
+        name="word_format",
+        summary="Format text, tables, custom styles, headers, and footers.",
+        annotations=_WRITE_ANNOTATIONS,
+        actions=_FORMAT_ACTIONS,
+        example_action="format_text",
+        example_params={
+            "filename": "/path/doc.docx",
+            "paragraph_index": 0,
+            "start_pos": 0,
+            "end_pos": 5,
+            "bold": True,
+        },
+    ),
+    CompoundGroupSpec(
+        name="word_protection",
+        summary="Encrypt, unprotect, restrict editing, add signature marker, or verify.",
+        annotations=_WRITE_ANNOTATIONS,
+        actions=_PROTECTION_ACTIONS,
+        example_action="protect",
+        example_params={"filename": "/path/doc.docx", "password": "secret"},
+    ),
+    CompoundGroupSpec(
+        name="word_footnote",
+        summary="Add footnotes/endnotes, convert footnotes, or customize note style.",
+        annotations=_WRITE_ANNOTATIONS,
+        actions=_FOOTNOTE_ACTIONS,
+        example_action="add_footnote",
+        example_params={
+            "filename": "/path/doc.docx",
+            "paragraph_index": 0,
+            "footnote_text": "Note text",
+        },
+    ),
+    CompoundGroupSpec(
+        name="word_property",
+        summary="Read/update core document properties and configure page layout.",
+        annotations=_WRITE_ANNOTATIONS,
+        actions=_PROPERTY_ACTIONS,
+        example_action="get_properties",
+        example_params={"filename": "/path/doc.docx"},
+    ),
+)
+
+
+def _build_group_description(spec: CompoundGroupSpec) -> str:
+    """Build dynamic description with action list and group-specific usage example."""
+    action_list = ", ".join(spec.actions)
+    example_spec = _get_action_spec(
+        spec.example_action, spec.actions[spec.example_action]
+    )
+    req_names = ", ".join(example_spec.required) or "none"
+    example_json = json.dumps(
+        {"action": spec.example_action, "params": spec.example_params}
+    )
+    return (
+        f"{spec.summary} Actions: {action_list}.\n"
+        f"Pass parameters inside `params`, e.g. {example_json} "
+        f"(required: {req_names}). "
+        "Use `action='help'` for full per-action parameter schemas in one call."
+    )
+
 
 def register_compound_tools(mcp: FastMCP) -> None:
     """Register the 9-tool hybrid compound surface on the FastMCP server."""
-    write = ToolAnnotations(readOnlyHint=False)
-    destructive = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
+    mcp.tool(annotations=_WRITE_ANNOTATIONS)(batch_tools.build_document)
+    mcp.tool(annotations=_WRITE_ANNOTATIONS)(batch_tools.create_from_markdown)
+    mcp.tool(annotations=_WRITE_ANNOTATIONS)(batch_tools.batch_add_content)
 
-    # Keep the 3 high-efficiency single-pass tools with full typed schemas
-    mcp.tool(annotations=write)(batch_tools.build_document)
-    mcp.tool(annotations=write)(batch_tools.create_from_markdown)
-    mcp.tool(annotations=write)(batch_tools.batch_add_content)
+    for group_spec in _GROUP_SPECS:
 
-    @mcp.tool(
-        annotations=write,
-        description=(
-            "Document lifecycle, inspection, search, merge, and PDF export. "
-            f"Actions: {', '.join(_DOCUMENT_ACTIONS)}." + _PARAMS_NOTE
-        ),
-    )
-    async def word_document(
-        action: str, params: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        return await _dispatch("word_document", _DOCUMENT_ACTIONS, action, params)
+        def _make_tool(spec: CompoundGroupSpec) -> _ToolFn:
+            async def _group_tool(
+                action: str, params: dict[str, Any] | None = None
+            ) -> dict[str, Any]:
+                return await _dispatch(spec.name, spec.actions, action, params)
 
-    @mcp.tool(
-        annotations=destructive,
-        description=(
-            "Add, update, search/replace, or delete document content elements. "
-            f"Actions: {', '.join(_CONTENT_ACTIONS)}." + _PARAMS_NOTE
-        ),
-    )
-    async def word_content(
-        action: str, params: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        return await _dispatch("word_content", _CONTENT_ACTIONS, action, params)
+            _group_tool.__name__ = spec.name
+            return _group_tool
 
-    @mcp.tool(
-        annotations=write,
-        description=(
-            "Format text, tables, custom styles, headers, and footers. "
-            f"Actions: {', '.join(_FORMAT_ACTIONS)}." + _PARAMS_NOTE
-        ),
-    )
-    async def word_format(
-        action: str, params: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        return await _dispatch("word_format", _FORMAT_ACTIONS, action, params)
-
-    @mcp.tool(
-        annotations=write,
-        description=(
-            "Encrypt, unprotect, restrict editing, add signature marker, or verify. "
-            f"Actions: {', '.join(_PROTECTION_ACTIONS)}." + _PARAMS_NOTE
-        ),
-    )
-    async def word_protection(
-        action: str, params: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        return await _dispatch("word_protection", _PROTECTION_ACTIONS, action, params)
-
-    @mcp.tool(
-        annotations=write,
-        description=(
-            "Add footnotes/endnotes, convert footnotes, or customize note style. "
-            f"Actions: {', '.join(_FOOTNOTE_ACTIONS)}." + _PARAMS_NOTE
-        ),
-    )
-    async def word_footnote(
-        action: str, params: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        return await _dispatch("word_footnote", _FOOTNOTE_ACTIONS, action, params)
-
-    @mcp.tool(
-        annotations=write,
-        description=(
-            "Read/update core document properties and configure page layout. "
-            f"Actions: {', '.join(_PROPERTY_ACTIONS)}." + _PARAMS_NOTE
-        ),
-    )
-    async def word_property(
-        action: str, params: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        return await _dispatch("word_property", _PROPERTY_ACTIONS, action, params)
+        mcp.tool(
+            name=group_spec.name,
+            annotations=group_spec.annotations,
+            description=_build_group_description(group_spec),
+        )(_make_tool(group_spec))

@@ -17,6 +17,7 @@ from docx import Document
 from docx.document import Document as DocumentType
 from docx.text.paragraph import Paragraph
 
+from word_mcp.core.document_context import atomic_write_target, document_context
 from word_mcp.core.styles import (
     DEFAULT_SETTINGS,
     StyleSettings,
@@ -24,10 +25,8 @@ from word_mcp.core.styles import (
     ensure_table_style,
 )
 from word_mcp.core.tables import copy_table
-from word_mcp.utils.document_utils import (
-    create_document_copy,
-    ensure_docx_extension,
-)
+from word_mcp.exception import ConfigurationError, DocumentProcessingError
+from word_mcp.utils.document_utils import ensure_docx_extension
 
 
 def core_create_document(
@@ -64,27 +63,28 @@ def core_create_document(
     ensure_heading_style(doc, settings=settings)
     ensure_table_style(doc)
 
-    doc.save(filename)
+    with atomic_write_target(filename) as tmp_path:
+        doc.save(str(tmp_path))
     return filename
 
 
 def core_copy_document(
     source_filename: str, destination_filename: str | None = None
-) -> tuple[bool, str, str | None]:
-    """Create a copy of a Word document.
-
-    Args:
-        source_filename: Path to the source document.
-        destination_filename: Optional path for the copy.
-
-    Returns:
-        Tuple of (success, message, destination_path).
-    """
+) -> str:
+    """Create a copy of a Word document atomically, raising on failure."""
     source_filename = ensure_docx_extension(source_filename)
-    if destination_filename:
-        destination_filename = ensure_docx_extension(destination_filename)
+    if not os.path.exists(source_filename):
+        raise FileNotFoundError(f"Source document '{source_filename}' does not exist.")
 
-    return create_document_copy(source_filename, destination_filename)
+    if destination_filename:
+        dest_path = ensure_docx_extension(destination_filename)
+    else:
+        base, ext = os.path.splitext(source_filename)
+        dest_path = f"{base}_copy{ext}"
+
+    with atomic_write_target(dest_path) as tmp_path:
+        shutil.copy2(source_filename, str(tmp_path))
+    return dest_path
 
 
 def core_merge_documents(
@@ -106,50 +106,38 @@ def core_merge_documents(
 
     for i, filename in enumerate(source_filenames):
         doc_filename = ensure_docx_extension(filename)
-        source_doc: DocumentType = Document(doc_filename)
+        with document_context(doc_filename, mode="read") as source_doc:
+            if add_page_breaks and i > 0:
+                target_doc.add_page_break()
 
-        if add_page_breaks and i > 0:
-            target_doc.add_page_break()
+            for paragraph in source_doc.paragraphs:
+                new_paragraph = target_doc.add_paragraph(paragraph.text)
 
-        # Copy paragraphs
-        for paragraph in source_doc.paragraphs:
-            new_paragraph = target_doc.add_paragraph(paragraph.text)
+                try:
+                    if paragraph.style and paragraph.style.name in target_doc.styles:
+                        new_paragraph.style = paragraph.style.name
+                except (KeyError, AttributeError):
+                    pass
 
-            # Simple style matching
-            try:
-                if paragraph.style and paragraph.style.name in target_doc.styles:
-                    new_paragraph.style = paragraph.style.name
-            except (KeyError, AttributeError):
-                pass
+                for run_idx, run in enumerate(paragraph.runs):
+                    if run_idx < len(new_paragraph.runs):
+                        new_run = new_paragraph.runs[run_idx]
+                        new_run.bold = run.bold
+                        new_run.italic = run.italic
+                        new_run.underline = run.underline
+                        if run.font.size:
+                            new_run.font.size = run.font.size
 
-            # Copy run formatting
-            for run_idx, run in enumerate(paragraph.runs):
-                if run_idx < len(new_paragraph.runs):
-                    new_run = new_paragraph.runs[run_idx]
-                    new_run.bold = run.bold
-                    new_run.italic = run.italic
-                    new_run.underline = run.underline
-                    if run.font.size:
-                        new_run.font.size = run.font.size
+            for table in source_doc.tables:
+                copy_table(table, target_doc)
 
-        # Copy tables
-        for table in source_doc.tables:
-            copy_table(table, target_doc)
-
-    target_doc.save(target_filename)
+    with atomic_write_target(target_filename) as tmp_path:
+        target_doc.save(str(tmp_path))
     return target_filename
 
 
 def core_convert_to_pdf(filename: str, output_filename: str | None = None) -> str:
-    """Convert a Word document to PDF format.
-
-    Args:
-        filename: Path to the Word document.
-        output_filename: Optional path for the output PDF.
-
-    Returns:
-        The path to the created PDF.
-    """
+    """Convert a Word document to PDF format."""
     if not output_filename:
         base_name, _ = os.path.splitext(filename)
         output_filename = f"{base_name}.pdf"
@@ -170,21 +158,25 @@ def core_convert_to_pdf(filename: str, output_filename: str | None = None) -> st
 
             convert(filename, output_filename)
             return output_filename
-        except ImportError:
-            raise RuntimeError(
-                "docx2pdf is required for PDF conversion on Windows. Please install it."
-            )
-        except Exception as e:
-            raise RuntimeError(f"PDF conversion failed: {str(e)}")
+        except ImportError as exc:
+            raise ConfigurationError(
+                "docx2pdf is required for PDF conversion on Windows.",
+                suggestion="Install docx2pdf and ensure Microsoft Word is available.",
+            ) from exc
+        except Exception as exc:
+            raise DocumentProcessingError(
+                f"PDF conversion failed: {exc}",
+                suggestion="Verify Microsoft Word is available and the document is not locked.",
+            ) from exc
 
-    elif system in ["Linux", "Darwin"]:
+    if system in ["Linux", "Darwin"]:
         lo_commands = (
             ["libreoffice", "soffice"]
             if system == "Linux"
             else ["soffice", "/Applications/LibreOffice.app/Contents/MacOS/soffice"]
         )
 
-        last_error = None
+        last_error: Exception | None = None
         for cmd_name in lo_commands:
             try:
                 cmd = [
@@ -200,31 +192,37 @@ def core_convert_to_pdf(filename: str, output_filename: str | None = None) -> st
                     cmd, capture_output=True, text=True, timeout=60, check=True
                 )
 
-                # Handle LibreOffice naming
                 base_name = os.path.basename(filename)
                 pdf_base_name = os.path.splitext(base_name)[0] + ".pdf"
                 created_pdf = os.path.join(output_dir, pdf_base_name)
 
                 if created_pdf != output_filename and os.path.exists(created_pdf):
-                    shutil.move(created_pdf, output_filename)
+                    os.replace(created_pdf, output_filename)
                 return output_filename
-            except (subprocess.SubprocessError, FileNotFoundError) as e:
-                last_error = e
+            except (subprocess.SubprocessError, FileNotFoundError) as exc:
+                last_error = exc
                 continue
 
-        # Fallback to docx2pdf if available and LibreOffice failed
         try:
             from docx2pdf import convert
 
             convert(filename, output_filename)
             return output_filename
-        except (ImportError, Exception):
-            raise RuntimeError(
-                f"PDF conversion failed. LibreOffice errors: {str(last_error)}. docx2pdf fallback also failed."
-            )
+        except ImportError as exc:
+            raise ConfigurationError(
+                f"PDF conversion requires LibreOffice or docx2pdf ({last_error}).",
+                suggestion="Install LibreOffice or docx2pdf to enable PDF export.",
+            ) from exc
+        except Exception as exc:
+            raise DocumentProcessingError(
+                f"PDF conversion failed. LibreOffice error: {last_error}. Fallback error: {exc}",
+                suggestion="Verify LibreOffice or Microsoft Word is installed and accessible.",
+            ) from exc
 
-    else:
-        raise RuntimeError(f"Unsupported platform for PDF conversion: {system}")
+    raise ConfigurationError(
+        f"Unsupported platform for PDF conversion: {system}",
+        suggestion="Run PDF conversion on Windows, macOS, or Linux.",
+    )
 
 
 def core_get_paragraph_text(doc: DocumentType, paragraph_index: int) -> dict[str, Any]:
