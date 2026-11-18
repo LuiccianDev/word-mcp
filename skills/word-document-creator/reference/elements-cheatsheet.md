@@ -78,7 +78,29 @@ Each element in the `elements` array is a dictionary with a `"type"` property an
 {
   "type": "callout",
   "text": "Nota importante: Esta configuración requiere permisos de administrador.",
-  "title": "ATENCIÓN"
+  "title": "ATENCIÓN",
+  "variant": "warning"
 }
 ```
-* When provided, `title` is rendered as a bold prefix (`{title}: `); it renders an indented italic paragraph.
+* When `variant` is omitted and `title` is provided, `title` is rendered as a bold prefix (`{title}: `); it renders an indented italic paragraph.
+* When `variant` (`"note"`, `"tip"`, `"important"`, `"warning"`, or `"caution"`) is provided, it renders a shaded 1x1 callout table with a colored left accent border.
+
+## 8. Image (`"type": "image"`)
+```json
+{
+  "type": "image",
+  "path": "/path/to/diagrama.png",
+  "width": 4.5,
+  "caption": "Figura 1: Arquitectura del sistema",
+  "alignment": "center"
+}
+```
+* `path`: Must reside inside `WORD_MCP_DIRS`.
+* `width`: Optional width in inches (positive float).
+
+## 9. Table of Contents (`"type": "toc"`), Title Block (`"type": "title_block"`), & References (`"type": "references"`)
+```json
+{"type": "title_block", "title": "Informe Técnico", "subtitle": "Fase 1", "author": "Equipo Ingeniería", "institution": "División Técnica", "date": "2026-11-18"}
+{"type": "toc", "title": "Tabla de Contenido", "max_level": 3, "page_break": true}
+{"type": "references", "title": "Referencias", "items": ["Autor, A. (2026). Título de la obra. Editorial."]}
+```

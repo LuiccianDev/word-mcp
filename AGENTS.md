@@ -43,14 +43,16 @@ When assisting users or configuring clients (Claude Desktop, Cursor, Cline, Copi
 
 ---
 
-## 2. Single-Pass Token Optimization Directive
+## 2. Single-Pass Token Optimization & Compound Dispatch Directives
 
 - **Prohibition of Chatty Micro-Iterations:** AI assistants using `word-mcp` must avoid making consecutive micro-calls (e.g., calling `create_document`, then 15 separate calls to `add_heading`, `add_paragraph`, `add_table`, `set_page_numbering`, and `save_document`). This legacy anti-pattern consumes tens of thousands of tokens and multiple conversational turns.
 - **Mandatory Single-Pass Usage:** Always prefer:
-  1. `build_document`: Construct complete, publication-ready documents with headers, footers, page numbers (`PAGE`), margins, typography presets (`modern`, `formal`, `academic`, `compact`), headings, markdown styling, tables, and lists in **one single MCP tool call** (>90% token savings).
+  1. `build_document`: Construct complete, publication-ready documents with headers, footers, page numbers (`PAGE`), margins, typography presets (`modern`, `formal`, `report`, `academic`, `apa`, `compact`), headings, markdown styling, callout boxes, tables, and lists in **one single MCP tool call** (>90% token savings).
   2. `create_from_markdown`: Convert structured markdown text directly into a Word document in one call.
-  3. `batch_add_content`: Batch-append sections, tables, and lists to existing documents in a single atomic pass.
-- **Lightweight Outline Inspection:** When reading or modifying large documents, use `get_document_outline` first to inspect structure and headings without dumping full body text into the context window.
+  3. `batch_add_content`: Batch-append sections, tables, callouts, and lists to existing documents in a single atomic pass.
+  4. `word_content(action="batch_edit", ...)`: Apply multiple text/paragraph replacements, insertions, and deletions atomically in one pass.
+- **Lightweight Outline & Bounded Inspection:** When reading or modifying large documents, use `word_document(action="outline", ...)` (`get_document_outline`), `word_document(action="read_range", ...)` (`read_document_range`), or `word_document(action="get_tables", ...)` (`get_document_tables`) first to inspect structure, section slices, and paginated table rows without dumping full body text into the context window.
+- **Single-Round-Trip Schema Discovery:** In default `compound` mode (9 tools), call `action="help"` with no `params` on any domain tool (`word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to retrieve the full `required` and `optional` parameter schema for every action in that domain in one call.
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: word-document-creator
 description: "Create high-quality, professional Word documents (.docx) in a single pass using Word MCP. Generates complete documents with typography, margins, line spacing, header/footer, page numbers, headings, paragraphs, and tables in 1 tool call, saving 90% tokens."
-argument-hint: "Document type, objective, design preset ('modern', 'formal', 'academic'), and target path"
+argument-hint: "Document type, objective, design preset ('modern', 'formal', 'report', 'academic', 'apa', 'compact'), and target path"
 user-invocable: true
 disable-model-invocation: false
 ---
@@ -18,7 +18,7 @@ Use this skill to create complete, visually styled Microsoft Word documents in *
 2. **Never make micro-calls for new documents:**
    - Do NOT chain `create_document` -> `add_heading` -> `add_paragraph` -> `add_table`.
    - Send the entire document structure inside the `elements` array or `markdown_content` in **one call**.
-3. **Always use absolute allowed paths** within `WORD_MCP_DIRS`.
+3. **Always use allowed paths** within `WORD_MCP_DIRS` (including any `"type": "image"` paths inside `elements`). All writes are staged to a sibling temporary file and replaced atomically via `os.replace`.
 
 ## Design Presets
 
@@ -26,7 +26,9 @@ Use this skill to create complete, visually styled Microsoft Word documents in *
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `modern` (Default) | Calibri | 11.0 pt | 1.15 | 2.5 cm | Executive summaries, business proposals, corporate reports |
 | `formal` | Times New Roman | 12.0 pt | 1.50 | Top/Bottom 2.5cm, Left 3.0cm | Legal contracts, official letters, meeting minutes |
+| `report` | Cambria | 11.0 pt | 1.20 | Top/Bottom 2.5cm, Left 3.0cm, Right 2.2cm | Technical engineering reports, audits, structured deliverables |
 | `academic` | Times New Roman | 12.0 pt | 2.00 (Double) | 2.54 cm (1 inch) | University reports, theses, research papers |
+| `apa` | Times New Roman | 12.0 pt | 2.00 (Double) | 2.54 cm (1 inch) | APA 7th edition manuscripts with hanging-indent references |
 | `compact` | Arial | 10.0 pt | 1.00 (Single) | 2.0 cm | Invoices, datasheets, quick memos |
 
 ## Canonical Usage Pattern: `build_document`
@@ -89,5 +91,5 @@ Use this skill to create complete, visually styled Microsoft Word documents in *
 ## Quick Verification (QA)
 
 After generating the document with `build_document`:
-- Run `get_document_outline(filename)` to confirm the structure without reloading the full text.
+- In default `compound` mode, run `word_document(action="outline", params={"filename": "/path/to/informe_ventas.docx"})` (or `get_document_outline(filename)` in `full` mode) to confirm the structure without reloading the full text.
 - Present a concise, helpful confirmation to the user.

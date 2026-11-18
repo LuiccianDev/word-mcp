@@ -194,8 +194,28 @@ All runtime configuration is supplied via standard OS environment variables or t
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `modern` *(Default)* | Calibri | 11.0 pt | 1.15 | 2.5 cm | Executive summaries, business proposals, corporate reports |
 | `formal` | Times New Roman | 12.0 pt | 1.50 | Top/Bottom 2.5 cm, Left 3.0 cm | Legal contracts, official letters, meeting minutes |
+| `report` | Cambria | 11.0 pt | 1.20 | Top/Bottom 2.5 cm, Left 3.0 cm, Right 2.2 cm | Engineering deliverables, technical audits, structured reports |
 | `academic` | Times New Roman | 12.0 pt | 2.00 (Double) | 2.54 cm (1 inch) | University papers, research articles, theses (APA/MLA) |
+| `apa` | Times New Roman | 12.0 pt | 2.00 (Double) | 2.54 cm (1 inch) | APA 7th edition manuscripts with hanging-indent references |
 | `compact` | Arial | 10.0 pt | 1.00 (Single) | 2.0 cm | Invoices, datasheets, internal memos |
+
+---
+
+## Default Compound Tool Surface (`WORD_MCP_TOOLS=compound`)
+
+By default, `word-mcp` exposes 9 high-efficiency tools. Call any of the 6 domain tools with `action="help"` to retrieve all action schemas in a single turn:
+
+| Tool | Type | Actions / Purpose |
+| :--- | :--- | :--- |
+| `build_document` | Single-Pass | Build complete documents with presets, margins, headers/footers, page numbers, TOC, callouts, tables, and lists. |
+| `create_from_markdown` | Single-Pass | Convert Markdown (including GitHub alerts `> [!NOTE]` and tables) into a styled `.docx` in one call. |
+| `batch_add_content` | Single-Pass | Append multiple content elements atomically to an existing `.docx`. |
+| `word_document` | Compound Dispatcher | `create`, `copy`, `info`, `text`, `outline`, `list`, `merge`, `paragraph_text`, `find_text`, `to_pdf`, `read_range`, `get_tables`, `help`. |
+| `word_content` | Compound Dispatcher | `add_heading`, `add_paragraph`, `add_picture`, `add_table`, `add_page_break`, `delete_paragraph`, `search_and_replace`, `add_toc`, `add_hyperlink`, `add_bookmark`, `batch_edit`, `help`. |
+| `word_format` | Compound Dispatcher | `format_text`, `create_style`, `format_table`, `add_header`, `add_footer`, `help`. |
+| `word_protection` | Compound Dispatcher | `protect`, `unprotect`, `restrict_editing`, `add_signature`, `verify`, `help`. |
+| `word_footnote` | Compound Dispatcher | `add_footnote`, `add_endnote`, `convert_to_endnotes`, `customize_style`, `help`. |
+| `word_property` | Compound Dispatcher | `get_properties`, `set_properties`, `set_page_layout`, `help`. |
 
 ---
 

@@ -36,10 +36,27 @@ When calling `build_document` or formatting tools, choose the preset that matche
 - **Margins**: 2.0 cm on all sides
 - **Use Case**: Invoices, product spec sheets, brief internal notes, cheat sheets.
 
-## Custom Margins
+### 5. `report`
+- **Body Font**: Cambria, 11 pt, Color `#1F2328`
+- **Headings**: Calibri (Heading 1: 18 pt bold `#0A3069`, Heading 2: 14 pt bold `#0550AE`, Heading 3: 12 pt bold `#1F2328`)
+- **Line Spacing**: 1.20 lines
+- **Paragraph Spacing**: 6 pt after
+- **Margins**: Top: 2.5 cm, Bottom: 2.5 cm, Left: 3.0 cm, Right: 2.2 cm
+- **Use Case**: Engineering reports, technical deliverables, executive audits.
 
-You can override preset margins in `build_document` using the `margins` object:
+### 6. `apa`
+- **Body Font**: Times New Roman, 12 pt, Color `#000000`
+- **Headings**: Times New Roman, 12 pt bold
+- **Line Spacing**: 2.00 lines (Double spaced)
+- **Paragraph Spacing**: 0 pt after (0.5 inch first-line indent; hanging indent on `"type": "references"`)
+- **Margins**: 2.54 cm (1.0 inch) on all 4 sides
+- **Use Case**: APA 7th edition academic manuscripts and literature reviews.
+
+## Custom Margins & Page Size
+
+You can override preset margins and `page_size` (`"letter"`, `"a4"`, `"legal"`, `"a5"`) in `build_document` using the `margins` object:
 ```json
+"page_size": "a4",
 "margins": {
   "top": 2.5,
   "bottom": 2.5,

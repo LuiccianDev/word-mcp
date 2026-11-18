@@ -13,30 +13,49 @@ Use this skill to inspect and update **existing** Microsoft Word documents with 
 ## Core Rules
 
 1. **Inspect Before Reading Full Text:**
-   - Use get_document_outline first to see paragraph previews, paragraph styles, and table dimensions.
-   - Do NOT call `get_document_text` unless you strictly need to read the full body content.
-2. **Batch Appending Over Single Injections:**
+   - Use `word_document(action="outline", ...)` (or `get_document_outline` in `full` mode) first to see paragraph previews, paragraph styles, and table dimensions.
+   - Use `word_document(action="read_range", ...)` or `word_document(action="get_tables", ...)` to read targeted sections or paginated table rows.
+   - Do NOT call `get_document_text` (`word_document(action="text", ...)`) unless you strictly need to read the full body content.
+2. **Batch Appending & Atomic Edits Over Single Injections:**
    - When adding new sections, appendices, or summary tables, use `batch_add_content`.
+   - When applying multiple text/paragraph replacements or insertions in one pass, use `word_content(action="batch_edit", ...)`.
    - Never chain single `add_heading` + multiple `add_paragraph` + `add_table` calls.
 3. **Surgical Search and Replace:**
-   - Use `search_and_replace` for template variables (e.g. `{{CLIENT_NAME}}`, `[FECHA]`) or updating outdated terms across the entire document.
+   - Use `word_content(action="search_and_replace", ...)` (or `search_and_replace`) for template variables (e.g. `{{CLIENT_NAME}}`, `[FECHA]`) or updating outdated terms across the entire document.
 4. **Document Merging:**
-   - When assembling multiple chapters or reports, use `merge_documents` rather than manually copying text between files.
+   - When assembling multiple chapters or reports, use `word_document(action="merge", ...)` (or `merge_documents`) rather than manually copying text between files. Both `target_filename` and `source_filenames` must reside within `WORD_MCP_DIRS`.
 
 ## Workflow Patterns
 
-### Pattern A: Inspect Structure
+### Pattern A: Inspect Structure & Targeted Sections
 ```python
-# Call outline to get a compact summary (saves 95% tokens compared to get_document_text)
+# Compound mode (default): inspect structure or read a bounded section
+word_document(action="outline", params={"filename": "/path/to/documento.docx"})
+word_document(action="read_range", params={"filename": "/path/to/documento.docx", "section_heading": "Introduccion"})
+
+# Full mode equivalent:
 get_document_outline(filename="/path/to/documento.docx")
+find_text_in_document(filename="/path/to/documento.docx", text_to_find="clausula")
 ```
 
-### Pattern B: Search & Replace
+### Pattern B: Search & Replace or Multi-Op Batch Edit
 ```python
-# Replace placeholders or update terms
+# Compound mode (default): atomic multi-operation batch edit
+word_content(
+    action="batch_edit",
+    params={
+        "filename": "/path/to/contrato.docx",
+        "operations": [
+            {"op": "replace_text", "old_text": "ACME Corp", "new_text": "Global Logistics Inc."},
+            {"op": "replace_paragraph", "paragraph_index": 2, "text": "Cláusula actualizada."}
+        ]
+    }
+)
+
+# Full mode single search_and_replace:
 search_and_replace(
     filename="/path/to/contrato.docx",
-    text_to_find="ACME Corp",
+    find_text="ACME Corp",
     replace_text="Global Logistics Inc."
 )
 ```
