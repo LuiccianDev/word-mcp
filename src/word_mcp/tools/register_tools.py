@@ -55,9 +55,9 @@ def register_all_tools(mcp: FastMCP) -> None:
         register_compound_tools(mcp)
         return
 
-    read_only = ToolAnnotations(readOnlyHint=True)
-    write = ToolAnnotations(readOnlyHint=False)
-    destructive = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
+    read_only = ToolAnnotations(read_only_hint=True)
+    write = ToolAnnotations(read_only_hint=False)
+    destructive = ToolAnnotations(read_only_hint=False, destructive_hint=True)
 
     def _register(tool_fn: Callable[..., Any], annotations: ToolAnnotations) -> None:
         mcp.tool(annotations=annotations)(tool_fn)

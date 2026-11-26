@@ -6,6 +6,10 @@ import string
 from typing import Any
 
 from docx.document import Document
+from docx.shared import Pt
+
+
+MAX_FOOTNOTE_START_NUMBER = 10_000
 
 
 def core_add_footnote(doc: Document, paragraph_index: int, text: str) -> dict[str, Any]:
@@ -194,12 +198,31 @@ def get_format_symbols(numbering_format: str, count: int) -> list[str]:
         return [str(i) for i in range(1, count + 1)]
 
 
+def validate_start_number(start_number: int) -> None:
+    """Validate footnote start_number bounds."""
+    if start_number < 1 or start_number > MAX_FOOTNOTE_START_NUMBER:
+        raise ValueError(
+            f"start_number must be between 1 and {MAX_FOOTNOTE_START_NUMBER}, got {start_number}"
+        )
+
+
+def _resolve_footnote_symbol(
+    offset: int, start_number: int, format_symbols: list[str]
+) -> str:
+    idx = offset + start_number - 1
+    if 0 <= idx < len(format_symbols):
+        return format_symbols[idx]
+    return str(idx + 1)
+
+
 def core_customize_footnote_formatting(
     doc: Document,
     footnote_refs: list[tuple[int, int, str]],
     format_symbols: list[str],
     start_number: int,
     style: str | None = None,
+    font_name: str | None = None,
+    font_size: int | None = None,
 ) -> int:
     """
     Apply custom formatting to footnote references and text.
@@ -210,21 +233,23 @@ def core_customize_footnote_formatting(
         format_symbols: List of formatting symbols to use
         start_number: Number to start footnote numbering from
         style: Optional style to apply to footnote text
+        font_name: Optional font family to apply to footnote references and entries
+        font_size: Optional font size in points to apply to footnote entries
 
     Returns:
         Number of footnotes formatted
     """
+    validate_start_number(start_number)
+
     # Update footnote references with new format
     for i, (para_idx, run_idx, _) in enumerate(footnote_refs):
         try:
-            idx = i + start_number - 1
-            if idx < len(format_symbols):
-                symbol = format_symbols[idx]
-            else:
-                symbol = str(idx + 1)  # Fall back to numbers if we run out of symbols
-
+            symbol = _resolve_footnote_symbol(i, start_number, format_symbols)
             paragraph = doc.paragraphs[para_idx]
-            paragraph.runs[run_idx].text = symbol
+            ref_run = paragraph.runs[run_idx]
+            ref_run.text = symbol
+            if font_name:
+                ref_run.font.name = font_name
         except IndexError:
             # Skip if we can't locate the reference
             pass
@@ -245,12 +270,9 @@ def core_customize_footnote_formatting(
                             # Remove the old footnote number/symbol
                             footnote_text = footnote_text.split(" ", 1)[1]
 
-                        # Add new format
-                        idx = i + start_number - 1
-                        if idx < len(format_symbols):
-                            symbol = format_symbols[idx]
-                        else:
-                            symbol = str(idx + 1)
+                        symbol = _resolve_footnote_symbol(
+                            i, start_number, format_symbols
+                        )
 
                         # Apply new formatting
                         para.text = f"{symbol} {footnote_text}"
@@ -258,6 +280,12 @@ def core_customize_footnote_formatting(
                         # Apply style
                         if style:
                             para.style = style
+                        if font_name or font_size is not None:
+                            for run in para.runs:
+                                if font_name:
+                                    run.font.name = font_name
+                                if font_size is not None:
+                                    run.font.size = Pt(font_size)
                 except IndexError:
                     pass
 

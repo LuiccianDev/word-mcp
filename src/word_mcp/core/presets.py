@@ -25,23 +25,105 @@ PAGE_SIZES: dict[str, tuple[Length, Length]] = {
 }
 
 _DEFAULT_HEADINGS_SANS: dict[int, dict[str, Any]] = {
-    1: {"size": 18.0, "bold": True, "italic": False, "color": (31, 78, 121), "space_before": 14.0, "space_after": 6.0},
-    2: {"size": 14.0, "bold": True, "italic": False, "color": (46, 117, 182), "space_before": 12.0, "space_after": 4.0},
-    3: {"size": 12.0, "bold": True, "italic": False, "color": (68, 84, 106), "space_before": 10.0, "space_after": 4.0},
+    1: {
+        "size": 18.0,
+        "bold": True,
+        "italic": False,
+        "color": (31, 78, 121),
+        "space_before": 14.0,
+        "space_after": 6.0,
+    },
+    2: {
+        "size": 14.0,
+        "bold": True,
+        "italic": False,
+        "color": (46, 117, 182),
+        "space_before": 12.0,
+        "space_after": 4.0,
+    },
+    3: {
+        "size": 12.0,
+        "bold": True,
+        "italic": False,
+        "color": (68, 84, 106),
+        "space_before": 10.0,
+        "space_after": 4.0,
+    },
 }
 
 _DEFAULT_HEADINGS_SERIF: dict[int, dict[str, Any]] = {
-    1: {"size": 16.0, "bold": True, "italic": False, "color": (0, 0, 0), "space_before": 12.0, "space_after": 6.0},
-    2: {"size": 14.0, "bold": True, "italic": False, "color": (0, 0, 0), "space_before": 10.0, "space_after": 4.0},
-    3: {"size": 12.0, "bold": True, "italic": False, "color": (0, 0, 0), "space_before": 8.0, "space_after": 4.0},
+    1: {
+        "size": 16.0,
+        "bold": True,
+        "italic": False,
+        "color": (0, 0, 0),
+        "space_before": 12.0,
+        "space_after": 6.0,
+    },
+    2: {
+        "size": 14.0,
+        "bold": True,
+        "italic": False,
+        "color": (0, 0, 0),
+        "space_before": 10.0,
+        "space_after": 4.0,
+    },
+    3: {
+        "size": 12.0,
+        "bold": True,
+        "italic": False,
+        "color": (0, 0, 0),
+        "space_before": 8.0,
+        "space_after": 4.0,
+    },
 }
 
 _APA_HEADINGS: dict[int, dict[str, Any]] = {
-    1: {"size": 12.0, "bold": True, "italic": False, "color": (0, 0, 0), "alignment": WD_ALIGN_PARAGRAPH.CENTER, "space_before": 12.0, "space_after": 0.0},
-    2: {"size": 12.0, "bold": True, "italic": False, "color": (0, 0, 0), "alignment": WD_ALIGN_PARAGRAPH.LEFT, "space_before": 12.0, "space_after": 0.0},
-    3: {"size": 12.0, "bold": True, "italic": True, "color": (0, 0, 0), "alignment": WD_ALIGN_PARAGRAPH.LEFT, "space_before": 12.0, "space_after": 0.0},
-    4: {"size": 12.0, "bold": True, "italic": False, "color": (0, 0, 0), "alignment": WD_ALIGN_PARAGRAPH.LEFT, "space_before": 6.0, "space_after": 0.0},
-    5: {"size": 12.0, "bold": True, "italic": True, "color": (0, 0, 0), "alignment": WD_ALIGN_PARAGRAPH.LEFT, "space_before": 6.0, "space_after": 0.0},
+    1: {
+        "size": 12.0,
+        "bold": True,
+        "italic": False,
+        "color": (0, 0, 0),
+        "alignment": WD_ALIGN_PARAGRAPH.CENTER,
+        "space_before": 12.0,
+        "space_after": 0.0,
+    },
+    2: {
+        "size": 12.0,
+        "bold": True,
+        "italic": False,
+        "color": (0, 0, 0),
+        "alignment": WD_ALIGN_PARAGRAPH.LEFT,
+        "space_before": 12.0,
+        "space_after": 0.0,
+    },
+    3: {
+        "size": 12.0,
+        "bold": True,
+        "italic": True,
+        "color": (0, 0, 0),
+        "alignment": WD_ALIGN_PARAGRAPH.LEFT,
+        "space_before": 12.0,
+        "space_after": 0.0,
+    },
+    4: {
+        "size": 12.0,
+        "bold": True,
+        "italic": False,
+        "color": (0, 0, 0),
+        "alignment": WD_ALIGN_PARAGRAPH.LEFT,
+        "space_before": 6.0,
+        "space_after": 0.0,
+    },
+    5: {
+        "size": 12.0,
+        "bold": True,
+        "italic": True,
+        "color": (0, 0, 0),
+        "alignment": WD_ALIGN_PARAGRAPH.LEFT,
+        "space_before": 6.0,
+        "space_after": 0.0,
+    },
 }
 
 PRESETS: dict[str, dict[str, Any]] = {
@@ -78,9 +160,30 @@ PRESETS: dict[str, dict[str, Any]] = {
         "page_size": "a4",
         "margins": {"top": 2.5, "bottom": 2.5, "left": 2.5, "right": 2.5},
         "headings": {
-            1: {"size": 18.0, "bold": True, "italic": False, "color": (27, 54, 93), "space_before": 14.0, "space_after": 6.0},
-            2: {"size": 14.0, "bold": True, "italic": False, "color": (27, 54, 93), "space_before": 12.0, "space_after": 4.0},
-            3: {"size": 12.0, "bold": True, "italic": False, "color": (51, 78, 104), "space_before": 10.0, "space_after": 4.0},
+            1: {
+                "size": 18.0,
+                "bold": True,
+                "italic": False,
+                "color": (27, 54, 93),
+                "space_before": 14.0,
+                "space_after": 6.0,
+            },
+            2: {
+                "size": 14.0,
+                "bold": True,
+                "italic": False,
+                "color": (27, 54, 93),
+                "space_before": 12.0,
+                "space_after": 4.0,
+            },
+            3: {
+                "size": 12.0,
+                "bold": True,
+                "italic": False,
+                "color": (51, 78, 104),
+                "space_before": 10.0,
+                "space_after": 4.0,
+            },
         },
         "table_header_bg": "1B365D",
         "hanging_indent_cm": 1.27,
@@ -176,9 +279,7 @@ def apply_profile_typography(doc: DocumentType, profile: dict[str, Any]) -> None
             h_style.font.italic = bool(cfg.get("italic", False))
             if "color" in cfg:
                 c = cfg["color"]
-                h_style.font.color.rgb = (
-                    c if isinstance(c, RGBColor) else RGBColor(*c)
-                )
+                h_style.font.color.rgb = c if isinstance(c, RGBColor) else RGBColor(*c)
             if "alignment" in cfg:
                 h_style.paragraph_format.alignment = cfg["alignment"]
             if "space_before" in cfg:

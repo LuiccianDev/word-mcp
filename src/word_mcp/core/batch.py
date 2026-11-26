@@ -22,12 +22,42 @@ from docx.shared import Cm, Inches, Pt, RGBColor
 from docx.text.run import Run
 
 from word_mcp.core.content import core_add_table_of_contents
+from word_mcp.core.links import validate_hyperlink_url
 from word_mcp.core.presets import (
     apply_profile_typography,
     resolve_page_size,
     resolve_profile,
 )
+from word_mcp.core.tables import validate_table_dimensions
 from word_mcp.validation.document_validators import PathAccess, validate_path
+
+
+MAX_BATCH_ELEMENTS = 5_000
+MAX_LIST_DEPTH = 10
+
+
+def validate_batch_elements(elements: list[dict[str, Any]] | None) -> None:
+    """Enforce bounded batch element count."""
+    if elements is not None and len(elements) > MAX_BATCH_ELEMENTS:
+        raise ValueError(
+            f"Batch elements count ({len(elements)}) exceeds maximum limit ({MAX_BATCH_ELEMENTS})."
+        )
+
+
+def render_elements_batch(
+    doc: DocumentType, elements: list[dict[str, Any]] | None
+) -> tuple[dict[str, int], int, str]:
+    """Validate and render a list of elements into doc, returning (counts, total, summary)."""
+    validate_batch_elements(elements)
+    counts: dict[str, int] = {}
+    if elements:
+        for elem in elements:
+            if isinstance(elem, dict):
+                t = render_element(doc, elem)
+                counts[t] = counts.get(t, 0) + 1
+    total = sum(counts.values())
+    summary = ", ".join(f"{v} {k}s" for k, v in counts.items())
+    return counts, total, summary
 
 
 ALIGNMENT_MAP = {
@@ -98,7 +128,7 @@ def _render_callout_box(
     )
     tc_pr.append(
         parse_xml(
-            f'<w:tcBorders {nsdecls("w")}>'
+            f"<w:tcBorders {nsdecls('w')}>"
             f'  <w:top w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
             f'  <w:left w:val="single" w:sz="24" w:space="0" w:color="{style.accent_hex}"/>'
             f'  <w:bottom w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
@@ -108,7 +138,7 @@ def _render_callout_box(
     )
     tc_pr.append(
         parse_xml(
-            f'<w:tcMar {nsdecls("w")}>'
+            f"<w:tcMar {nsdecls('w')}>"
             f'  <w:top w:w="120" w:type="dxa"/>'
             f'  <w:left w:w="200" w:type="dxa"/>'
             f'  <w:bottom w:w="120" w:type="dxa"/>'
@@ -211,7 +241,7 @@ def apply_document_settings(
             footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             if page_numbers:
                 if footer_text:
-                    footer_para.add_run(" | Pág. ")
+                    footer_para.add_run(" | Page ")
                 apply_page_number_field(footer_para)
             if len(footer_para.runs) > 0:
                 footer_para.runs[0].font.size = Pt(8.5)
@@ -228,11 +258,13 @@ def _append_inline_hyperlink(paragraph: Any, label: str, target: str) -> bool:
     hyperlink = OxmlElement("w:hyperlink")
     if target.startswith("#") and len(target) > 1:
         hyperlink.set(qn("w:anchor"), target[1:].replace(" ", "_"))
-    elif target.startswith(("http://", "https://", "mailto:")):
-        r_id = paragraph.part.relate_to(target, RT.HYPERLINK, is_external=True)
-        hyperlink.set(qn("r:id"), r_id)
     else:
-        return False
+        try:
+            safe_target = validate_hyperlink_url(target)
+        except ValueError:
+            return False
+        r_id = paragraph.part.relate_to(safe_target, RT.HYPERLINK, is_external=True)
+        hyperlink.set(qn("r:id"), r_id)
 
     run = Run(OxmlElement("w:r"), paragraph)
     run.text = label
@@ -268,12 +300,20 @@ def _render_list_items(
     doc: DocumentType, items: Any, style_name: str, base_level: int = 0
 ) -> None:
     """Render flat or nested list items with dynamic indentation."""
+    if base_level > MAX_LIST_DEPTH:
+        raise ValueError(
+            f"List nesting depth ({base_level}) exceeds maximum limit ({MAX_LIST_DEPTH})."
+        )
     if isinstance(items, str):
         items = [items]
     for item in items:
         if isinstance(item, dict):
             text = str(item.get("text", ""))
             level = int(item.get("level", base_level))
+            if level < 0 or level > MAX_LIST_DEPTH:
+                raise ValueError(
+                    f"List item level ({level}) must be between 0 and {MAX_LIST_DEPTH}."
+                )
             p = doc.add_paragraph(style=style_name)
             if level > 0:
                 p.paragraph_format.left_indent = Cm(0.63 * level)
@@ -361,6 +401,7 @@ def render_element(doc: DocumentType, elem: dict[str, Any]) -> str:
         total_cols = (
             len(headers) if headers else (len(rows_data[0]) if rows_data else 1)
         )
+        validate_table_dimensions(total_rows, total_cols)
 
         table = doc.add_table(rows=total_rows, cols=total_cols)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -555,18 +596,8 @@ def core_build_document(
         page_size=page_size,
     )
 
-    counts: dict[str, int] = {}
-    if elements:
-        for elem in elements:
-            if isinstance(elem, dict):
-                t = render_element(doc, elem)
-                counts[t] = counts.get(t, 0) + 1
-
-    total_created = sum(counts.values())
-    summary_parts = [f"{v} {k}s" for k, v in counts.items()]
-    summary = (
-        ", ".join(summary_parts) if summary_parts else "Document layout configured"
-    )
+    counts, total_created, rendered_summary = render_elements_batch(doc, elements)
+    summary = rendered_summary if rendered_summary else "Document layout configured"
 
     return {
         "status": "success",
@@ -609,7 +640,9 @@ def parse_markdown_to_elements(markdown_text: str) -> list[dict[str, Any]]:
         alert_match = _ALERT_MARKER_RE.match(first_line)
         if alert_match:
             variant = alert_match.group(1).lower()
-            parts = [alert_match.group(2).strip()] if alert_match.group(2).strip() else []
+            parts = (
+                [alert_match.group(2).strip()] if alert_match.group(2).strip() else []
+            )
             parts.extend(q for q in quote_lines[1:] if q)
             elements.append(
                 {"type": "callout", "variant": variant, "text": " ".join(parts)}

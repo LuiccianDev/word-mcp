@@ -379,7 +379,10 @@ async def test_compound_word_document_get_tables(
     res = await _call_tool(
         server,
         "word_document",
-        {"action": "get_tables", "params": {"filename": doc_path, "include_rows": True}},
+        {
+            "action": "get_tables",
+            "params": {"filename": doc_path, "include_rows": True},
+        },
     )
     assert res["status"] == "success"
     assert res["total_tables"] == 1
@@ -414,7 +417,11 @@ async def test_compound_word_content_batch_edit(
                 "filename": doc_path,
                 "operations": [
                     {"op": "replace_text", "old_text": "old", "new_text": "new"},
-                    {"op": "replace_paragraph", "paragraph_index": 1, "text": "Updated"},
+                    {
+                        "op": "replace_paragraph",
+                        "paragraph_index": 1,
+                        "text": "Updated",
+                    },
                 ],
             },
         },

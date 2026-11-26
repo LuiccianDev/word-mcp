@@ -12,6 +12,73 @@ from pathlib import Path
 from word_mcp.exception.exception_core import SecurityError, ValidationError
 
 
+_WIN_RESERVED_STEMS: frozenset[str] = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        *(f"COM{i}" for i in range(1, 10)),
+        *(f"LPT{i}" for i in range(1, 10)),
+    }
+)
+
+
+def _unc_share_root(normalized_unc: str) -> tuple[str, str] | None:
+    """Return lowercase (server, share) for a slash-normalized //server/share path."""
+    parts = [p for p in normalized_unc.lstrip("/").split("/") if p]
+    if len(parts) >= 2:
+        return parts[0].lower(), parts[1].lower()
+    return None
+
+
+def _reject_unsafe_raw_path(raw: str, allowed_dirs: list[str], param_name: str) -> None:
+    """Reject Win32 device prefixes, unauthorized UNC paths, and DOS device names."""
+    normalized = raw.replace("\\", "/")
+    if normalized.startswith(("//./", "//?/")):
+        raise SecurityError(
+            f"Win32 device or extended namespace path '{raw}' is not permitted.",
+            suggestion="Provide a standard path inside WORD_MCP_DIRS.",
+            details={"param": param_name, "path": raw},
+        )
+    if normalized.startswith("//"):
+        target_share = _unc_share_root(normalized)
+        allowed_shares = {
+            share
+            for d in allowed_dirs
+            if d.replace("\\", "/").startswith("//")
+            and (share := _unc_share_root(d.replace("\\", "/"))) is not None
+        }
+        if target_share is None or target_share not in allowed_shares:
+            raise SecurityError(
+                f"UNC network path '{raw}' is not in allowed directories: {', '.join(allowed_dirs)}",
+                suggestion=(
+                    "Move the target into an allowed local directory in WORD_MCP_DIRS."
+                ),
+                details={"param": param_name, "path": raw},
+            )
+
+    check_target = normalized
+    for allowed_dir in allowed_dirs:
+        norm_allowed = allowed_dir.replace("\\", "/").rstrip("/")
+        if norm_allowed and normalized.lower().startswith(f"{norm_allowed.lower()}/"):
+            check_target = normalized[len(norm_allowed) + 1 :]
+            break
+
+    for seg in check_target.split("/"):
+        if not seg:
+            continue
+        stem = seg.rstrip(":").split(".", 1)[0].strip().upper()
+        if stem in _WIN_RESERVED_STEMS:
+            raise ValidationError(
+                f"Parameter '{param_name}' contains reserved device name '{seg}'.",
+                suggestion=(
+                    "Use a normal filename that does not match a reserved Windows device name."
+                ),
+                details={"param": param_name, "path": raw},
+            )
+
+
 def get_allowed_directories() -> list[str]:
     """Get the list of allowed directories from environment variables.
 
@@ -62,6 +129,8 @@ def resolve_sandboxed_path(
             suggestion="Configure WORD_MCP_DIRS with one or more allowed directories.",
             details={"param": param_name, "path": raw},
         )
+
+    _reject_unsafe_raw_path(raw, allowed_dirs, param_name)
 
     try:
         resolved = Path(raw).resolve()

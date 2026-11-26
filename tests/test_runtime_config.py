@@ -74,7 +74,9 @@ class TestRuntimeConfig(unittest.TestCase):
         self.assertEqual(stdout_buf.getvalue(), "")
         self.assertIn("Starting Word MCP Server", stderr_buf.getvalue())
 
-    def test_exception_tool_logs_traceback_for_wrapped_exception_in_dev_mode(self) -> None:
+    def test_exception_tool_logs_traceback_for_wrapped_exception_in_dev_mode(
+        self,
+    ) -> None:
         from word_mcp.exception.exception_tools import ExceptionTool
         from word_mcp.utils.logging_config import configure_logging
 

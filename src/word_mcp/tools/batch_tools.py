@@ -11,7 +11,8 @@ from typing import Any
 from word_mcp.core.batch import (
     core_build_document,
     core_create_from_markdown,
-    render_element,
+    render_elements_batch,
+    validate_batch_elements,
 )
 from word_mcp.core.document_context import document_context
 from word_mcp.models.response_models import BuildDocumentResult
@@ -50,6 +51,7 @@ async def build_document(
 ) -> dict[str, Any]:
     """Build a complete Word document with typography, margins, header/footer and content in a single pass."""
     assert filename is not None
+    validate_batch_elements(elements)
     target = filename
     with document_context(target, mode="write") as doc:
         res = core_build_document(
@@ -147,17 +149,11 @@ async def batch_add_content(
 ) -> dict[str, Any]:
     """Append multiple content blocks (headings, paragraphs, tables, lists) to an existing document in one pass."""
     assert filename is not None
+    validate_batch_elements(elements)
     target = filename
-    counts: dict[str, int] = {}
     with document_context(target, mode="write") as doc:
-        for elem in elements:
-            if isinstance(elem, dict):
-                elem_type = render_element(doc, elem)
-                counts[elem_type] = counts.get(elem_type, 0) + 1
-
-    total = sum(counts.values())
-    summary_parts = [f"{v} {k}s" for k, v in counts.items()]
-    summary = ", ".join(summary_parts) if summary_parts else "No elements added"
+        counts, total, rendered_summary = render_elements_batch(doc, elements)
+    summary = rendered_summary if rendered_summary else "No elements added"
 
     return BuildDocumentResult(
         status="success",

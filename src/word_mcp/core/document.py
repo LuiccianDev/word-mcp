@@ -10,6 +10,7 @@ import platform
 import re
 import shutil
 import subprocess
+import tempfile
 from re import Pattern
 from typing import Any
 
@@ -21,6 +22,7 @@ from word_mcp.core.document_context import atomic_write_target, document_context
 from word_mcp.core.styles import (
     DEFAULT_SETTINGS,
     StyleSettings,
+    copy_run_formatting,
     ensure_heading_style,
     ensure_table_style,
 )
@@ -87,6 +89,41 @@ def core_copy_document(
     return dest_path
 
 
+def _copy_paragraph_preserving_runs(
+    paragraph: Paragraph, target_doc: DocumentType
+) -> None:
+    """Copy a paragraph into target_doc while preserving individual run formatting."""
+    from docx.oxml.ns import qn
+    from docx.text.run import Run
+
+    has_child_runs = any(
+        child.tag in (qn("w:r"), qn("w:hyperlink")) for child in paragraph._p
+    )
+    if not has_child_runs:
+        new_paragraph = target_doc.add_paragraph(paragraph.text)
+    else:
+        new_paragraph = target_doc.add_paragraph()
+        for child in paragraph._p:
+            if child.tag == qn("w:r"):
+                src_run = Run(child, paragraph)
+                new_run = new_paragraph.add_run(src_run.text)
+                copy_run_formatting(src_run, new_run)
+            elif child.tag == qn("w:hyperlink"):
+                for h_child in child:
+                    if h_child.tag == qn("w:r"):
+                        src_run = Run(h_child, paragraph)
+                        new_run = new_paragraph.add_run(src_run.text)
+                        copy_run_formatting(src_run, new_run)
+
+    try:
+        if paragraph.style and paragraph.style.name in target_doc.styles:
+            new_paragraph.style = paragraph.style.name
+    except (KeyError, AttributeError):
+        pass
+    if paragraph.paragraph_format.alignment is not None:
+        new_paragraph.paragraph_format.alignment = paragraph.paragraph_format.alignment
+
+
 def core_merge_documents(
     target_filename: str,
     source_filenames: list[str],
@@ -110,26 +147,14 @@ def core_merge_documents(
             if add_page_breaks and i > 0:
                 target_doc.add_page_break()
 
-            for paragraph in source_doc.paragraphs:
-                new_paragraph = target_doc.add_paragraph(paragraph.text)
-
-                try:
-                    if paragraph.style and paragraph.style.name in target_doc.styles:
-                        new_paragraph.style = paragraph.style.name
-                except (KeyError, AttributeError):
-                    pass
-
-                for run_idx, run in enumerate(paragraph.runs):
-                    if run_idx < len(new_paragraph.runs):
-                        new_run = new_paragraph.runs[run_idx]
-                        new_run.bold = run.bold
-                        new_run.italic = run.italic
-                        new_run.underline = run.underline
-                        if run.font.size:
-                            new_run.font.size = run.font.size
-
-            for table in source_doc.tables:
-                copy_table(table, target_doc)
+            para_map = {id(p._p): p for p in source_doc.paragraphs}
+            table_map = {id(t._tbl): t for t in source_doc.tables}
+            for child in source_doc.element.body:
+                cid = id(child)
+                if cid in para_map:
+                    _copy_paragraph_preserving_runs(para_map[cid], target_doc)
+                elif cid in table_map:
+                    copy_table(table_map[cid], target_doc)
 
     with atomic_write_target(target_filename) as tmp_path:
         target_doc.save(str(tmp_path))
@@ -138,6 +163,7 @@ def core_merge_documents(
 
 def core_convert_to_pdf(filename: str, output_filename: str | None = None) -> str:
     """Convert a Word document to PDF format."""
+    filename = os.path.abspath(filename)
     if not output_filename:
         base_name, _ = os.path.splitext(filename)
         output_filename = f"{base_name}.pdf"
@@ -179,25 +205,32 @@ def core_convert_to_pdf(filename: str, output_filename: str | None = None) -> st
         last_error: Exception | None = None
         for cmd_name in lo_commands:
             try:
-                cmd = [
-                    cmd_name,
-                    "--headless",
-                    "--convert-to",
-                    "pdf",
-                    "--outdir",
-                    output_dir,
-                    filename,
-                ]
-                subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=60, check=True
-                )
+                with tempfile.TemporaryDirectory(
+                    dir=output_dir, prefix=".word_mcp_pdf_"
+                ) as staging_dir:
+                    cmd = [
+                        cmd_name,
+                        "--headless",
+                        "--convert-to",
+                        "pdf",
+                        "--outdir",
+                        staging_dir,
+                        filename,
+                    ]
+                    subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=60, check=True
+                    )
 
-                base_name = os.path.basename(filename)
-                pdf_base_name = os.path.splitext(base_name)[0] + ".pdf"
-                created_pdf = os.path.join(output_dir, pdf_base_name)
+                    base_name = os.path.basename(filename)
+                    pdf_base_name = os.path.splitext(base_name)[0] + ".pdf"
+                    staged_pdf = os.path.join(staging_dir, pdf_base_name)
 
-                if created_pdf != output_filename and os.path.exists(created_pdf):
-                    os.replace(created_pdf, output_filename)
+                    if not os.path.isfile(staged_pdf):
+                        raise subprocess.SubprocessError(
+                            "LibreOffice exited cleanly without producing a PDF output file."
+                        )
+
+                    os.replace(staged_pdf, output_filename)
                 return output_filename
             except (subprocess.SubprocessError, FileNotFoundError) as exc:
                 last_error = exc

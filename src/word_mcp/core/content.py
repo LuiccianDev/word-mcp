@@ -184,40 +184,72 @@ def core_add_table_of_contents(
     }
 
 
+def _is_plain_text_run(run_el: Any) -> bool:
+    """Return True if <w:r> contains no inline drawings, pictures, or breaks."""
+    return (
+        run_el.find(qn("w:drawing")) is None
+        and run_el.find(qn("w:pict")) is None
+        and run_el.find(qn("w:br")) is None
+    )
+
+
+def _replace_in_paragraph(paragraph: Paragraph, old_text: str, new_text: str) -> int:
+    """Replace all occurrences of old_text in paragraph, including cross-run matches."""
+    run_text = "".join(r.text for r in paragraph.runs)
+    total_hits = run_text.count(old_text)
+    if total_hits == 0:
+        return 0
+
+    intra_run_hits = sum(run.text.count(old_text) for run in paragraph.runs)
+    if intra_run_hits == total_hits:
+        for run in paragraph.runs:
+            if old_text in run.text:
+                run.text = run.text.replace(old_text, new_text)
+        return total_hits
+
+    plain_runs = [r for r in paragraph.runs if _is_plain_text_run(r._r)]
+    if plain_runs:
+        plain_text = "".join(r.text for r in plain_runs)
+        if old_text in plain_text:
+            plain_hits = plain_text.count(old_text)
+            plain_runs[0].text = plain_text.replace(old_text, new_text)
+            for extra_run in plain_runs[1:]:
+                paragraph._p.remove(extra_run._r)
+            return plain_hits
+
+    return 0
+
+
+def _replace_in_container(container: Any, old_text: str, new_text: str) -> int:
+    """Replace text across all paragraphs and nested tables in a container."""
+    count = 0
+    for paragraph in container.paragraphs:
+        count += _replace_in_paragraph(paragraph, old_text, new_text)
+    for table in container.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                count += _replace_in_container(cell, old_text, new_text)
+    return count
+
+
 def core_find_and_replace_text(doc: DocumentType, old_text: str, new_text: str) -> int:
-    """Find and replace text throughout the document.
-
-    Args:
-        doc: Document object to search and modify.
-        old_text: Text to find.
-        new_text: Text to replace with.
-
-    Returns:
-        Number of replacements made.
-    """
+    """Find and replace text throughout paragraphs, tables, headers, and footers."""
     if not old_text:
         raise ValueError("Search text cannot be empty")
 
-    replacement_count: int = 0
-
-    # Search and replace in paragraphs
-    for paragraph in doc.paragraphs:
-        if old_text in paragraph.text:
-            for run in paragraph.runs:
-                if old_text in run.text:
-                    run.text = run.text.replace(old_text, new_text)
-                    replacement_count += 1
-
-    # Search and replace in tables
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    if old_text in paragraph.text:
-                        for run in paragraph.runs:
-                            if old_text in run.text:
-                                run.text = run.text.replace(old_text, new_text)
-                                replacement_count += 1
+    replacement_count = _replace_in_container(doc, old_text, new_text)
+    seen_hf: set[int] = set()
+    for section in doc.sections:
+        for header_or_footer in (section.header, section.footer):
+            if getattr(header_or_footer, "is_linked_to_previous", False):
+                continue
+            hf_id = id(header_or_footer._element)
+            if hf_id in seen_hf:
+                continue
+            seen_hf.add(hf_id)
+            replacement_count += _replace_in_container(
+                header_or_footer, old_text, new_text
+            )
 
     return replacement_count
 
@@ -298,7 +330,10 @@ def core_batch_edit(
             inserted = Paragraph(new_p, target_para._parent)
             inserted.text = str(entry["text"])
             if entry.get("style"):
-                inserted.style = str(entry["style"])
+                try:
+                    inserted.style = str(entry["style"])
+                except KeyError:
+                    inserted.style = doc.styles["Normal"]
             details.append({"op": op_name, "paragraph_index": p_idx})
 
     return {"applied_count": len(details), "operations": details}

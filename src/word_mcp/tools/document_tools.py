@@ -21,12 +21,15 @@ from word_mcp.core import (
 from word_mcp.core.document import core_read_range
 from word_mcp.core.document_context import document_context
 from word_mcp.core.tables import core_get_tables
-from word_mcp.exception import ConfigurationError
+from word_mcp.exception import ConfigurationError, SecurityError, ValidationError
 from word_mcp.utils.document_utils import (
     core_extract_document_text,
     core_get_document_structure,
 )
-from word_mcp.utils.security import get_allowed_directories as _get_allowed_directories
+from word_mcp.utils.security import (
+    get_allowed_directories as _get_allowed_directories,
+    resolve_sandboxed_path,
+)
 from word_mcp.validation.document_validators import (
     PathAccess,
     PathRule,
@@ -123,11 +126,17 @@ async def list_available_documents(
         ]
         for file in sorted(docx_files):
             file_path = os.path.join(search_dir, file)
-            size_kb = os.path.getsize(file_path) / 1024
+            if os.path.islink(file_path) or not os.path.isfile(file_path):
+                continue
+            try:
+                resolved = resolve_sandboxed_path(file_path)
+                size_kb = os.path.getsize(resolved) / 1024
+            except (OSError, SecurityError, ValidationError):
+                continue
             all_documents.append(
                 {
                     "name": file,
-                    "path": os.path.abspath(file_path),
+                    "path": str(resolved),
                     "size_kb": round(size_kb, 2),
                     "source_directory": search_dir,
                 }
