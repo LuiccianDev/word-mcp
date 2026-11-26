@@ -21,34 +21,35 @@ When calling `build_document` or formatting tools, choose the preset that matche
 - **Use Case**: Legal contracts, corporate acts, formal requests, institutional memoranda.
 
 ### 3. `academic`
-- **Body Font**: Times New Roman, 12 pt, Color `#000000`
-- **Headings**: Times New Roman, bold
+- **Body Font**: Times New Roman, 12 pt
+- **Headings**: Times New Roman, bold (`#000000`)
 - **Line Spacing**: 2.00 lines (Double spaced per APA / MLA standards)
-- **Paragraph Spacing**: 0 pt after (indented first line)
+- **Paragraph Spacing**: 0 pt after
 - **Margins**: 2.54 cm (1.0 inch) on all 4 sides
 - **Use Case**: University papers, scientific articles, literature reviews, theses.
 
 ### 4. `compact`
 - **Body Font**: Arial, 10 pt
-- **Headings**: Arial, bold (Heading 1: 14 pt, Heading 2: 12 pt, Heading 3: 10 pt)
+- **Headings**: Arial, bold (Heading 1: 18 pt `#1F4E79`, Heading 2: 14 pt `#2E75B6`, Heading 3: 12 pt `#44546A`)
 - **Line Spacing**: 1.00 lines (Single spaced)
 - **Paragraph Spacing**: 4 pt after
 - **Margins**: 2.0 cm on all sides
 - **Use Case**: Invoices, product spec sheets, brief internal notes, cheat sheets.
 
 ### 5. `report`
-- **Body Font**: Cambria, 11 pt, Color `#1F2328`
-- **Headings**: Calibri (Heading 1: 18 pt bold `#0A3069`, Heading 2: 14 pt bold `#0550AE`, Heading 3: 12 pt bold `#1F2328`)
-- **Line Spacing**: 1.20 lines
+- **Body Font**: Calibri, 11 pt
+- **Headings**: Calibri (Heading 1: 18 pt bold `#1B365D`, Heading 2: 14 pt bold `#1B365D`, Heading 3: 12 pt bold `#334E68`)
+- **Line Spacing**: 1.15 lines
 - **Paragraph Spacing**: 6 pt after
-- **Margins**: Top: 2.5 cm, Bottom: 2.5 cm, Left: 3.0 cm, Right: 2.2 cm
+- **Page Size**: A4
+- **Margins**: 2.5 cm on all 4 sides
 - **Use Case**: Engineering reports, technical deliverables, executive audits.
 
 ### 6. `apa`
-- **Body Font**: Times New Roman, 12 pt, Color `#000000`
-- **Headings**: Times New Roman, 12 pt bold
+- **Body Font**: Times New Roman, 12 pt
+- **Headings**: Times New Roman, 12 pt (Heading 1 centered bold, Heading 2 left bold, Heading 3 left bold italic)
 - **Line Spacing**: 2.00 lines (Double spaced)
-- **Paragraph Spacing**: 0 pt after (0.5 inch first-line indent; hanging indent on `"type": "references"`)
+- **Paragraph Spacing**: 0 pt after (hanging indent `1.27 cm` on `"type": "references"`)
 - **Margins**: 2.54 cm (1.0 inch) on all 4 sides
 - **Use Case**: APA 7th edition academic manuscripts and literature reviews.
 

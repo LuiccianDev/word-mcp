@@ -1,59 +1,41 @@
 <div align="center">
   <h1>Word MCP Server</h1>
   <p>
-    <em>High-performance Model Context Protocol (MCP) server for programmatic Word (.docx) document generation and manipulation</em>
+    <em>High-performance Model Context Protocol (MCP) server for programmatic Word (.docx) document generation and manipulation.</em>
   </p>
-
-  [![PyPI Version](https://img.shields.io/pypi/v/luiccian-word-mcp.svg)](https://pypi.org/project/luiccian-word-mcp/)
-  [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
-  [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-  [![CodeQL](https://github.com/LuiccianDev/word-mcp/actions/workflows/codeql.yml/badge.svg)](https://github.com/LuiccianDev/word-mcp/actions/workflows/codeql.yml)
-  [![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
-  [![Rules for AI](https://img.shields.io/badge/rules-AGENTS.md-blue.svg)](AGENTS.md)
-  [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-  [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-brightgreen)](https://modelcontextprotocol.io)
-
 </div>
 
-**Word MCP Server** (`word-mcp`, PyPI: [`luiccian-word-mcp`](https://pypi.org/project/luiccian-word-mcp/)) is a high-performance Python server implementing the Model Context Protocol (MCP) to provide token-optimized Word document (`.docx`) creation, batch synthesis, and inspection capabilities for AI assistants (Claude Desktop, Claude Code, Cursor, VS Code / GitHub Copilot, Antigravity, Windsurf, Cline).
+<p align="center">
+  <a href="https://pypi.org/project/luiccian-word-mcp/"><img src="https://img.shields.io/pypi/v/luiccian-word-mcp.svg" alt="PyPI Version" /></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11+-3776AB.svg" alt="Python 3.11+" /></a>
+  <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv" /></a>
+  <a href="https://github.com/LuiccianDev/word-mcp/actions/workflows/ci.yml"><img src="https://github.com/LuiccianDev/word-mcp/actions/workflows/ci.yml/badge.svg" alt="CI Build" /></a>
+  <a href="https://github.com/LuiccianDev/word-mcp/actions/workflows/codeql.yml"><img src="https://github.com/LuiccianDev/word-mcp/actions/workflows/codeql.yml/badge.svg" alt="CodeQL" /></a>
+  <a href="https://github.com/LuiccianDev/word-mcp/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Compatible-brightgreen" alt="MCP Compatible" /></a>
+</p>
 
-Designed from the ground up for maximum token efficiency, it replaces chatty micro-iterations with single-pass document construction, saving over 90% of model tokens and conversational turns.
-
----
-
-## Key Architectural Highlights
-
-- **Compound Mode & Single-Turn Discovery (v3.2.0)**: Registers 9 tools by default (`build_document`, `create_from_markdown`, `batch_add_content`, plus 6 action-dispatched domain tools: `word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, `word_property`) to reduce tool-schema context overhead by 77.5%. Calling any domain tool with `action="help"` returns full `required` and `optional` parameter schemas for all actions in a single call. Set `WORD_MCP_TOOLS=full` (or `granular`) to expose all 40 individual tools.
-- **Single-Pass Document Builder**: Create complete, publication-ready documents (headers, footers, dynamic `PAGE` numbers, margins, headings, markdown styling, styled callout boxes, tables, TOCs, images, and lists) in **one single MCP call** (`build_document`).
-- **Markdown Direct Generation**: Turn structured Markdown into styled Word documents in one pass (`create_from_markdown`), including tables, nested lists, inline links, and GitHub-style alert callouts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`).
-- **Visual Design Presets**: Built-in typography and spacing standards (`modern`, `formal`, `academic`, `compact`, `report`, `apa`) with optional `font_name`, `font_size`, and `page_size` overrides.
-- **Lightweight Outline Inspection**: Extract paragraph previews and table counts without dumping full body text (`get_document_outline`), saving thousands of context tokens.
-- **Batch Content Ingestion**: Append multiple sections, tables, callouts, and lists to existing documents in a single atomic operation (`batch_add_content`).
-- **Sandbox Security, Atomic Persistence & Unified Errors**: Enforces `WORD_MCP_DIRS` across all 40 tools and secondary path parameters (`SecurityError`), stages writes through same-directory temporary files with atomic `os.replace`, and standardizes all failures under `OperationError`. Includes `msoffcrypto` password encryption, editing restrictions, signature markers, and headless PDF export.
-- **Complete Tool Reference**: See [`docs/TOOLS.md`](docs/TOOLS.md) for every tool signature, return shape, and parameter contract.
-- **Zero-Install Execution**: Instant launch with `uvx luiccian-word-mcp`.
+**Word MCP Server** (`word-mcp`, PyPI: [`luiccian-word-mcp`](https://pypi.org/project/luiccian-word-mcp/)) connects AI coding agents (Claude Desktop, Claude Code, Cursor, VS Code / GitHub Copilot, Antigravity, Windsurf, Cline) to deterministic `.docx` generation, inspection, and protection workflows. By default, it exposes **9 tools in `compound` mode** (3 single-pass builders and 6 domain dispatchers covering 40 granular actions) to cut schema overhead and build full documents in one call.
 
 ---
 
-## Quick Start with `uvx` (Recommended)
+## Quick Start
 
-No manual clone or virtual environment management required. Run the server directly using Astral [`uv`](https://docs.astral.sh/uv/):
+### 1. Run Directly with `uvx` (Recommended)
+
+Requires Astral [`uv`](https://docs.astral.sh/uv/). No repository clone or manual virtual environment is needed:
 
 ```bash
-# Run with stdio transport (default for AI IDEs)
+# Default stdio transport for AI IDEs and desktop clients
 uvx luiccian-word-mcp
 
-# Or run with SSE transport
+# Optional local SSE transport (loopback only unless --allow-remote is passed)
 uvx luiccian-word-mcp --transport sse --host 127.0.0.1 --port 8000
 ```
 
----
+### 2. Configure Your MCP Client (Claude Desktop)
 
-## MCP Client Configuration
-
-Configure your AI client by passing environment variables directly in the client's `env` block (no `.env` file is required). By default, the server starts in `compound` mode (9 tools); set `"WORD_MCP_TOOLS": "full"` in `env` to expose all 40 granular tools.
-
-### 1. Claude Desktop (`claude_desktop_config.json`)
+Add the server to `claude_desktop_config.json` and point `WORD_MCP_DIRS` to the folder(s) the assistant may access:
 
 ```json
 {
@@ -69,25 +51,75 @@ Configure your AI client by passing environment variables directly in the client
 }
 ```
 
-> [!TIP]
-> **Windows path example:** Use forward slashes or escaped backslashes (e.g., `"C:/Users/YourName/Documents"`). You can allow multiple roots separated by commas.
->
-> **Local checkout:** If running from a local git repository instead of PyPI:
-> ```json
-> {
->   "mcpServers": {
->     "word-mcp": {
->       "command": "uv",
->       "args": ["run", "--directory", "/path/to/word-mcp", "luiccian-word-mcp"],
->       "env": {
->         "WORD_MCP_DIRS": "/path/to/your/documents"
->       }
->     }
->   }
-> }
-> ```
+> **Note:** On Windows, use forward slashes or escaped backslashes (for example, `"C:/Users/YourName/Documents"`). Separate multiple allowed directories with commas.
 
-### 2. Cursor (`.cursor/mcp.json`)
+---
+
+## Architecture & Tool Modes
+
+### Selective Tool Loading (`WORD_MCP_TOOLS`)
+
+| Mode | Tools Exposed | Behavior |
+| :--- | :--- | :--- |
+| `compound` (default) | 9 tools | Exposes 3 single-pass builders plus 6 domain routers (`word_document` through `word_property`) with `action="help"` schema discovery. |
+| `full` / `granular` | 40 tools | Registers each atomic tool directly without a domain wrapper. |
+
+### Default Compound Catalog (`WORD_MCP_TOOLS=compound`)
+
+| Tool | Role | Actions / Capabilities |
+| :--- | :--- | :--- |
+| `build_document` | Single-Pass Builder | Create complete documents with presets, margins, page sizes, headers/footers, `PAGE` numbers, TOC, callouts, tables, images, and lists in 1 call. |
+| `create_from_markdown` | Single-Pass Builder | Convert Markdown (headings, tables, nested lists, inline links, and GitHub alerts `> [!NOTE]`) into a styled `.docx` in 1 call. |
+| `batch_add_content` | Single-Pass Appender | Append multiple structured content blocks atomically to an existing `.docx`. |
+| `word_document` | Domain Dispatcher | `create`, `copy`, `info`, `text`, `outline`, `list`, `merge`, `paragraph_text`, `find_text`, `to_pdf`, `read_range`, `get_tables`, `help` |
+| `word_content` | Domain Dispatcher | `add_heading`, `add_paragraph`, `add_picture`, `add_table`, `add_page_break`, `delete_paragraph`, `search_and_replace`, `add_toc`, `add_hyperlink`, `add_bookmark`, `batch_edit`, `help` |
+| `word_format` | Domain Dispatcher | `format_text`, `create_style`, `format_table`, `add_header`, `add_footer`, `help` |
+| `word_protection` | Domain Dispatcher | `protect`, `unprotect`, `restrict_editing`, `add_signature`, `verify`, `help` |
+| `word_footnote` | Domain Dispatcher | `add_footnote`, `add_endnote`, `convert_to_endnotes`, `customize_style`, `help` |
+| `word_property` | Domain Dispatcher | `get_properties`, `set_properties`, `set_page_layout`, `help` |
+
+### Token Optimization: Single-Pass vs. Legacy
+
+| Metric | Legacy Micro-Calls | Word MCP Single-Pass |
+| :--- | :--- | :--- |
+| **Tool Calls** | 15 - 35 calls per document | **1 single call** (`build_document`) |
+| **Token Usage** | ~15,000 - 30,000 tokens | **~800 - 1,500 tokens** (90%+ savings) |
+| **Disk Operations** | Multiple file writes | Single in-memory assembly and atomic `os.replace` |
+
+Outline inspection (`get_document_outline`) extracts paragraph previews and table counts without dumping full body text into context.
+
+---
+
+## Visual Design Presets & Configuration
+
+### Built-in Presets (`preset`)
+
+| Preset | Font Family | Body Size | Line Spacing | Page Size | Margins | Best For |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `modern` *(Default)* | Calibri | 11.0 pt | 1.15 | Letter | 2.5 cm | Executive summaries, proposals, corporate reports |
+| `formal` | Times New Roman | 12.0 pt | 1.50 | Letter | Top/Bottom/Right 2.5 cm, Left 3.0 cm | Legal contracts, official letters, meeting minutes |
+| `report` | Calibri | 11.0 pt | 1.15 | A4 | 2.5 cm | Engineering deliverables, technical audits, structured reports |
+| `academic` | Times New Roman | 12.0 pt | 2.00 (Double) | Letter | 2.54 cm (1 inch) | University papers, research articles, theses |
+| `apa` | Times New Roman | 12.0 pt | 2.00 (Double) | Letter | 2.54 cm (1 inch) | APA 7th edition manuscripts with hanging-indent references |
+| `compact` | Arial | 10.0 pt | 1.00 (Single) | Letter | 2.0 cm | Invoices, datasheets, internal memos |
+
+### Environment Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `WORD_MCP_DIRS` | `./documents` | Comma-separated allowed directories for reading, writing, listing, images, and PDF export across all path arguments (legacy fallback: `MCP_ALLOWED_DIRECTORIES`). |
+| `WORD_MCP_TOOLS` | `compound` | Tool surface mode: `compound` (9 tools) or `full` / `granular` (40 tools) (legacy fallback: `WORD_MCP_TOOL_MODE`). |
+| `WORD_MCP_LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) written strictly to `stderr`. |
+| `WORD_MCP_DEV_MODE` | `false` | Set `true` to default logging to `DEBUG` and emit full tracebacks to `stderr`. |
+
+---
+
+## Other MCP Clients & Local Development
+
+<details>
+<summary>Cursor, VS Code, Antigravity, Windsurf, Cline, Claude Code CLI, and Local `uv` Setup</summary>
+
+### Cursor (`.cursor/mcp.json`)
 
 ```json
 {
@@ -103,9 +135,7 @@ Configure your AI client by passing environment variables directly in the client
 }
 ```
 
-### 3. VS Code / GitHub Copilot (`.vscode/mcp.json`)
-
-VS Code uses a top-level `"servers"` key and explicit `"type": "stdio"`:
+### VS Code / GitHub Copilot (`.vscode/mcp.json`)
 
 ```json
 {
@@ -122,7 +152,7 @@ VS Code uses a top-level `"servers"` key and explicit `"type": "stdio"`:
 }
 ```
 
-### 4. Antigravity / Windsurf (`mcp_config.json`)
+### Antigravity / Windsurf (`mcp_config.json`) & Cline (`cline_mcp_settings.json`)
 
 ```json
 {
@@ -138,23 +168,7 @@ VS Code uses a top-level `"servers"` key and explicit `"type": "stdio"`:
 }
 ```
 
-### 5. Cline / Roo Code (`cline_mcp_settings.json`)
-
-```json
-{
-  "mcpServers": {
-    "word-mcp": {
-      "command": "uvx",
-      "args": ["luiccian-word-mcp"],
-      "env": {
-        "WORD_MCP_DIRS": "/path/to/your/documents"
-      }
-    }
-  }
-}
-```
-
-### 6. Claude Code CLI
+### Claude Code CLI
 
 ```bash
 claude mcp add word-mcp \
@@ -162,109 +176,48 @@ claude mcp add word-mcp \
   -- uvx luiccian-word-mcp
 ```
 
----
-
-## Environment Variables
-
-All runtime configuration is supplied via standard OS environment variables or the MCP client's `env` object:
-
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `WORD_MCP_DIRS` | `./documents` | Comma-separated list of allowed root directories for reading, writing, and listing `.docx`, `.pdf`, and image files across all primary and secondary path arguments. Legacy `MCP_ALLOWED_DIRECTORIES` remains supported as a fallback. |
-| `WORD_MCP_TOOLS` | `compound` | Tool surface mode: `compound` (9 tools: 3 single-pass + 6 domain dispatchers) or `full` (or `granular`, all 40 tools). Legacy `WORD_MCP_TOOL_MODE` remains supported as a fallback. |
-| `WORD_MCP_LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) written strictly to `stderr`. |
-| `WORD_MCP_DEV_MODE` | `false` | Set to `true` to default logging to `DEBUG` and log full exception tracebacks to `stderr`. |
-
----
-
-## Token Optimization: Single-Pass vs. Legacy
-
-| Metric | Legacy Micro-Calls | Word MCP Single-Pass |
-| :--- | :--- | :--- |
-| **Tool Calls** | 15 - 35 calls per document | **1 single call** (`build_document`) |
-| **Token Usage** | ~15,000 - 30,000 tokens | **~800 - 1,500 tokens** (90%+ savings) |
-| **Disk Operations** | Multiple file writes | Single in-memory assembly and write |
-| **Generation Time** | 30 - 60 seconds | Single in-memory assembly |
-
----
-
-## Visual Design Presets
-
-| Preset | Font Family | Body Size | Line Spacing | Margins | Best For |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `modern` *(Default)* | Calibri | 11.0 pt | 1.15 | 2.5 cm | Executive summaries, business proposals, corporate reports |
-| `formal` | Times New Roman | 12.0 pt | 1.50 | Top/Bottom 2.5 cm, Left 3.0 cm | Legal contracts, official letters, meeting minutes |
-| `report` | Cambria | 11.0 pt | 1.20 | Top/Bottom 2.5 cm, Left 3.0 cm, Right 2.2 cm | Engineering deliverables, technical audits, structured reports |
-| `academic` | Times New Roman | 12.0 pt | 2.00 (Double) | 2.54 cm (1 inch) | University papers, research articles, theses (APA/MLA) |
-| `apa` | Times New Roman | 12.0 pt | 2.00 (Double) | 2.54 cm (1 inch) | APA 7th edition manuscripts with hanging-indent references |
-| `compact` | Arial | 10.0 pt | 1.00 (Single) | 2.0 cm | Invoices, datasheets, internal memos |
-
----
-
-## Default Compound Tool Surface (`WORD_MCP_TOOLS=compound`)
-
-By default, `word-mcp` exposes 9 high-efficiency tools. Call any of the 6 domain tools with `action="help"` to retrieve all action schemas in a single turn:
-
-| Tool | Type | Actions / Purpose |
-| :--- | :--- | :--- |
-| `build_document` | Single-Pass | Build complete documents with presets, margins, headers/footers, page numbers, TOC, callouts, tables, and lists. |
-| `create_from_markdown` | Single-Pass | Convert Markdown (including GitHub alerts `> [!NOTE]` and tables) into a styled `.docx` in one call. |
-| `batch_add_content` | Single-Pass | Append multiple content elements atomically to an existing `.docx`. |
-| `word_document` | Compound Dispatcher | `create`, `copy`, `info`, `text`, `outline`, `list`, `merge`, `paragraph_text`, `find_text`, `to_pdf`, `read_range`, `get_tables`, `help`. |
-| `word_content` | Compound Dispatcher | `add_heading`, `add_paragraph`, `add_picture`, `add_table`, `add_page_break`, `delete_paragraph`, `search_and_replace`, `add_toc`, `add_hyperlink`, `add_bookmark`, `batch_edit`, `help`. |
-| `word_format` | Compound Dispatcher | `format_text`, `create_style`, `format_table`, `add_header`, `add_footer`, `help`. |
-| `word_protection` | Compound Dispatcher | `protect`, `unprotect`, `restrict_editing`, `add_signature`, `verify`, `help`. |
-| `word_footnote` | Compound Dispatcher | `add_footnote`, `add_endnote`, `convert_to_endnotes`, `customize_style`, `help`. |
-| `word_property` | Compound Dispatcher | `get_properties`, `set_properties`, `set_page_layout`, `help`. |
-
----
-
-## Modular Skills Ecosystem
-
-The repository provides 3 modular, specialized skills in `skills/` for LLMs:
-
-- **`word-document-creator`**: Instructs the model to build complete documents in 1 single pass with headers, footers, pagination, tables, callouts, and presets.
-- **`word-document-editor`**: Focuses on lightweight outline inspection, batch mutations, search and replace, and document merging.
-- **`word-document-security`**: Handles password locking, editing restrictions, and PDF export for distribution.
-
----
-
-## Security
-
-- **Security Policy**: See [`SECURITY.md`](SECURITY.md) for vulnerability disclosure, protection metadata, and threat modeling.
-- **Rules for AI Assistants**: See [`AGENTS.md`](AGENTS.md) for official development directives, coding standards, and token optimization rules.
-- **Directory Isolation**: Set `WORD_MCP_DIRS` to restrict document operations strictly to designated folders. Path canonicalization prevents directory traversal.
-- **Trusted Publishing**: Tag-driven PyPI releases (`v*.*.*`) use GitHub Actions OIDC and PEP 740 artifact attestation.
-
----
-
-## Development
+### Local Development Checkout (`uv`)
 
 ```bash
-# Clone the repository
 git clone https://github.com/LuiccianDev/word-mcp.git
 cd word-mcp
-
-# Install dependencies with Astral uv
 uv sync --all-groups
-
-# Run server locally
-uv run luiccian-word-mcp
-
-# Run linting and type checking
 uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
 uv run mypy src
-
-# Run test suite
 uv run pytest
 ```
 
+To point an MCP client at a local checkout instead of PyPI:
+
+```json
+{
+  "mcpServers": {
+    "word-mcp": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/word-mcp", "luiccian-word-mcp"],
+      "env": {
+        "WORD_MCP_DIRS": "/path/to/your/documents"
+      }
+    }
+  }
+}
+```
+
+</details>
+
 ---
 
-## License
+## Documentation, Skills & Governance
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+| Resource | Purpose |
+| :--- | :--- |
+| [Tools Reference](https://github.com/LuiccianDev/word-mcp/blob/master/docs/TOOLS.md) | Complete signatures, return shapes, and parameter contracts (`docs/TOOLS.md`) |
+| [MCPB Deployment Guide](https://github.com/LuiccianDev/word-mcp/blob/master/docs/MCPB.md) | Building and installing desktop `.mcpb` bundles |
+| [Agent Skills (`skills/`)](https://github.com/LuiccianDev/word-mcp/tree/master/skills) | Modular LLM skills: `word-document-creator`, `word-document-editor`, `word-document-security` |
+| [Security Policy](https://github.com/LuiccianDev/word-mcp/blob/master/SECURITY.md) | Sandbox isolation, `.protection` sidecar security, and vulnerability disclosure |
+| [Contributing Guide](https://github.com/LuiccianDev/word-mcp/blob/master/CONTRIBUTING.md) | Quality gate, commit conventions, and automated release flow |
+| [AI Assistant Rules](https://github.com/LuiccianDev/word-mcp/blob/master/AGENTS.md) | Repository architecture rules, boundary contracts, and token optimization policy |
+| [Changelog](https://github.com/LuiccianDev/word-mcp/blob/master/CHANGELOG.md) | Version history following Keep a Changelog |
 
-<div align="center">
-  <p><strong>Word MCP Server</strong> • Maintained by <a href="https://github.com/LuiccianDev">LuiccianDev</a></p>
-</div>
+Licensed under the [MIT License](https://github.com/LuiccianDev/word-mcp/blob/master/LICENSE). Maintained by [LuiccianDev](https://github.com/LuiccianDev).

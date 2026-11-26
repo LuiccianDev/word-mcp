@@ -23,19 +23,21 @@ Only the latest major version branch receives active security updates and vulner
 ### 1. Directory Sandboxing (`WORD_MCP_DIRS`)
 By default (`./documents`) or via configuration, Word MCP limits document reading, writing, listing, image insertion, and PDF conversions strictly to explicit allowed directories:
 - `resolve_sandboxed_path` and `@tool_boundary` validate all primary and secondary path arguments (`filename`, `source_filename`, `destination_filename`, `target_filename`, `source_filenames`, `output_filename`, `image_path`, `directory`, and batch `image` elements) before any filesystem check or directory creation occurs.
-- Empty/whitespace paths and strings containing NUL bytes (`\x00`) are rejected before resolution, and paths are canonicalized via `pathlib.Path.resolve()`.
-- Directory traversal attempts (`../`, `..\\`) and symlink escapes outside `WORD_MCP_DIRS` are blocked with `SecurityError` (`error_type="security_violation"`, `recoverable=False`) before any file handle is opened.
+- Empty/whitespace paths, NUL bytes (`\x00`), Win32 device prefixes (`\\.\`, `\\?\`), unauthorized UNC shares, and Windows reserved DOS device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`) are rejected before `pathlib.Path.resolve()`.
+- Directory traversal attempts (`../`, `..\\`) and symlink escapes outside `WORD_MCP_DIRS` are blocked with `SecurityError` (`error_type="security_violation"`, `recoverable=False`) before any file handle is opened. `list_available_documents` skips symlinks and non-files.
+- `_fast_check_ooxml_zip` enforces ZIP entry count, per-entry uncompressed size, total uncompressed size, and compression ratio limits before opening `docx.Document` to mitigate ZIP bombs.
 
 ### 2. Password Protection and Protection Metadata
-- `protect_document` encrypts the OOXML container with `msoffcrypto-tool` and replaces the target file atomically via `atomic_write_target`. The password is not stored in the document or in this repository.
+- `protect_document` encrypts the OOXML container with `msoffcrypto-tool` and replaces the target file atomically via `atomic_write_target`. Empty passwords are rejected, and the password is not stored in the document or in this repository.
 - `unprotect_document` decrypts the container atomically and returns `Incorrect password` (`error_type="validation"`) when the key is invalid.
-- `add_restricted_editing` and `add_digital_signature` write a sidecar JSON file named `<document>.protection` next to the `.docx`. The sidecar stores a salted PBKDF2-HMAC-SHA-256 hash of the password for restricted-editing verification using a unique cryptographic salt per document and constant-time comparison. The `.protection` file is advisory metadata for MCP clients and does not replace native OOXML encryption (`protect_document`).
-- `add_digital_signature` writes a visible signature block and stores a SHA-256 hash of the paragraph text. It detects text changes after signing. It is **not a cryptographic signature** and does not verify signer identity.
-- `verify_document` checks the `.protection` sidecar metadata when present, and falls back to `msoffcrypto` container inspection (and optional password verification) for password-encrypted `.docx` files. It does not validate cryptographic OOXML package signatures.
+- `add_restricted_editing` and `add_digital_signature` write a sidecar JSON file named `<document>.protection` next to the `.docx`. Sidecar reads/deletes enforce `WORD_MCP_DIRS` containment, reject symlinks, cap metadata size at 64 KiB, and bound PBKDF2-HMAC-SHA-256 iteration counts. The `.protection` file is advisory metadata for MCP clients and does not replace native OOXML encryption (`protect_document`).
+- `add_digital_signature` writes a visible signature block and stores a SHA-256 hash of body paragraphs, table cells, and headers/footers. It detects content or signature-block changes after signing. It is **not a cryptographic signature** and does not verify signer identity.
+- `verify_document` checks `.protection` sidecar metadata (and invokes `core_verify_signature` for signed documents), or falls back to `msoffcrypto` container inspection and password verification for password-encrypted `.docx` files. Passing an empty password (`""`) returns verification failure. It does not validate cryptographic OOXML package signatures.
 
-### 3. Safe Subprocess Execution
-- Subprocess invocations (such as LibreOffice headless PDF conversion) use argument lists directly rather than `shell=True` to eliminate shell injection vulnerabilities.
-- Command existence and execution timeouts are enforced to prevent denial of service (DoS).
+### 3. Safe Subprocess, Link, and Transport Controls
+- Subprocess invocations (such as LibreOffice headless PDF conversion) use argument lists directly rather than `shell=True`, stage output inside a private `TemporaryDirectory`, and enforce execution timeouts.
+- `core_add_hyperlink` and inline markdown links allow only `http://`, `https://`, and `mailto:` URLs.
+- `--transport sse` binds only to loopback addresses (`127.0.0.1`, `localhost`, `::1`) unless `--allow-remote` is explicitly passed; SSE has no built-in authentication and must only be exposed behind an authenticated reverse proxy.
 
 ### 4. Known Limitations
 - The `.protection` sidecar is advisory metadata. Microsoft Word does not enforce the `editable_sections` list.

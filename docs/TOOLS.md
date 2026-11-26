@@ -38,7 +38,8 @@ Build a complete, professionally styled Word document in a single tool call with
 - `filename` (str): Output document file path (accepts `filename` or `file_path`).
 - `title` (str, optional): Document title metadata and core properties.
 - `author` (str, optional): Document author metadata.
-- `preset` (str, optional): Visual style preset (`"modern"`, `"formal"`, `"academic"`, `"compact"`). Default: `"modern"`.
+- `preset` (str, optional): Visual style preset (`"modern"`, `"formal"`, `"report"`, `"academic"`, `"apa"`, `"compact"`). Default: `"modern"`.
+- `page_size` (str, optional): Standard page size (`"letter"`, `"a4"`, `"legal"`, `"a5"`). Default: preset-defined (`"a4"` for `report`, `"letter"` for others).
 - `margins` (dict, optional): Custom margins `{"top": float, "bottom": float, "left": float, "right": float}` in centimeters.
 - `orientation` (str, optional): Page orientation (`"portrait"` or `"landscape"`). Default: `"portrait"`.
 - `font_name` (str, optional): Base body font family (e.g. `"Calibri"`, `"Times New Roman"`, `"Arial"`).
@@ -56,6 +57,9 @@ Build a complete, professionally styled Word document in a single tool call with
   - `{"type": "numbered_list", "items": ["Step 1", "Step 2"]}`
   - `{"type": "callout", "text": "...", "title": "NOTE", "variant": "note|tip|important|warning|caution"}` (renders `title` as a bold prefix; when `variant` is set, renders a shaded 1x1 callout box with a colored left accent border)
   - `{"type": "image", "path": "/path/to/image.png", "width": 3.0, "caption": "Figure 1", "alignment": "center"}`
+  - `{"type": "toc", "title": "Table of Contents", "max_level": 3, "page_break": True}`
+  - `{"type": "title_block", "title": "...", "subtitle": "...", "author": "...", "institution": "...", "date": "..."}`
+  - `{"type": "references", "title": "References", "items": [...], "hanging_indent_cm": 1.27}`
   - `{"type": "page_break"}`
 
 **Returns:**
@@ -78,7 +82,8 @@ Quickly draft and format a Word document from structured markdown text in a sing
 - `file_path` (str, optional): Alias for `filename`.
 - `title` (str, optional): Document title metadata.
 - `author` (str, optional): Document author metadata.
-- `preset` (str, optional): Visual style preset (`"modern"`, `"formal"`, `"academic"`, `"compact"`).
+- `preset` (str, optional): Visual style preset (`"modern"`, `"formal"`, `"report"`, `"academic"`, `"apa"`, `"compact"`).
+- `page_size` (str, optional): Standard page size (`"letter"`, `"a4"`, `"legal"`, `"a5"`).
 - `font_name` (str, optional): Base body font family.
 - `font_size` (float, optional): Base body font size in points.
 - `line_spacing` (float, optional): Line spacing multiplier.

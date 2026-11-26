@@ -26,7 +26,7 @@ Use this skill to create complete, visually styled Microsoft Word documents in *
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `modern` (Default) | Calibri | 11.0 pt | 1.15 | 2.5 cm | Executive summaries, business proposals, corporate reports |
 | `formal` | Times New Roman | 12.0 pt | 1.50 | Top/Bottom 2.5cm, Left 3.0cm | Legal contracts, official letters, meeting minutes |
-| `report` | Cambria | 11.0 pt | 1.20 | Top/Bottom 2.5cm, Left 3.0cm, Right 2.2cm | Technical engineering reports, audits, structured deliverables |
+| `report` | Calibri | 11.0 pt | 1.15 | 2.5 cm (A4) | Technical engineering reports, audits, structured deliverables |
 | `academic` | Times New Roman | 12.0 pt | 2.00 (Double) | 2.54 cm (1 inch) | University reports, theses, research papers |
 | `apa` | Times New Roman | 12.0 pt | 2.00 (Double) | 2.54 cm (1 inch) | APA 7th edition manuscripts with hanging-indent references |
 | `compact` | Arial | 10.0 pt | 1.00 (Single) | 2.0 cm | Invoices, datasheets, quick memos |
