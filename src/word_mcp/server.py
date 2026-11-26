@@ -7,7 +7,7 @@ Acts as the central controller for the MCP server that handles Word document ope
 from fastmcp import FastMCP
 
 from word_mcp import __version__
-from word_mcp.tools.register_tools import register_all_tools
+from word_mcp.tools.register_tools import get_tool_mode, register_all_tools
 from word_mcp.utils.logging_config import configure_logging, is_dev_mode
 from word_mcp.utils.security import get_allowed_directories
 
@@ -15,8 +15,25 @@ from word_mcp.utils.security import get_allowed_directories
 def create_server() -> FastMCP:
     """Create and configure the Word MCP Server."""
     logger = configure_logging()
+    tool_mode = get_tool_mode()
     allowed_dirs = get_allowed_directories()
     dirs_list = "\n".join([f"- `{d}`" for d in allowed_dirs])
+
+    if tool_mode == "compound":
+        tool_naming_section = (
+            "Active mode (`WORD_MCP_TOOLS=compound`, default): 9 tools are registered. "
+            "Prefer single-pass `build_document`, `create_from_markdown`, and `batch_add_content` "
+            "for document generation. For granular operations, use the 6 domain dispatchers "
+            "(`word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, "
+            "`word_property`) and call `action='help'` with no `params` to discover every "
+            "action's required and optional schema in one round trip."
+        )
+    else:
+        tool_naming_section = (
+            "Active mode (`WORD_MCP_TOOLS=full`): 40 unprefixed tools are registered "
+            "(for example, `create_document`, `build_document`, `create_from_markdown`, "
+            "`batch_add_content`). Each tool is registered exactly once."
+        )
 
     mcp = FastMCP(
         name="word_mcp",
@@ -81,12 +98,14 @@ Word MCP Server provides comprehensive Word document (.docx) manipulation capabi
 
 ## Tool Naming
 
-Tools use descriptive, unprefixed names (for example, `create_document`). Each tool is registered exactly once.""",
+{tool_naming_section}""",
         on_duplicate="error",
     )
 
     register_all_tools(mcp)
-    logger.info("Starting Word MCP Server v%s (dev_mode=%s)", __version__, is_dev_mode())
+    logger.info(
+        "Starting Word MCP Server v%s (dev_mode=%s)", __version__, is_dev_mode()
+    )
     logger.debug("Allowed directories: %s", allowed_dirs)
 
     return mcp

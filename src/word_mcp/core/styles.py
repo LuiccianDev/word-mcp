@@ -7,6 +7,7 @@ consistent formatting.
 """
 
 # Standard library imports
+import logging
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 
@@ -14,6 +15,9 @@ from typing import Any, Dict, Optional, Union
 from docx.document import Document
 from docx.enum.style import WD_STYLE_TYPE
 from docx.shared import Length, Pt, RGBColor
+
+
+logger = logging.getLogger(__name__)
 
 
 class StyleType(str, Enum):
@@ -86,7 +90,7 @@ class StyleSettings:
                 return self.colors[color_lower]
             try:
                 # Attempt to parse from hex string or similar
-                return RGBColor.from_string(value)
+                return RGBColor.from_string(value.lstrip("#"))
             except (ValueError, AttributeError):
                 pass
         return self.default_color
@@ -102,17 +106,37 @@ class FontProperties:
     def __init__(
         self,
         name: Optional[str] = None,
-        size: Optional[Union[int, Length]] = None,
+        size: Optional[Union[int, float, Length]] = None,
         bold: bool = False,
         italic: bool = False,
         color: Optional[Union[str, RGBColor]] = None,
         settings: StyleSettings = DEFAULT_SETTINGS,
     ):
         self.name = name or settings.font_name
-        self.size = size if size is not None else settings.font_size
+        if size is None:
+            resolved_size: Union[int, Length] = settings.font_size
+        elif isinstance(size, Length):
+            resolved_size = size
+        else:
+            resolved_size = Pt(size)
+        self.size = resolved_size
         self.bold = bold
         self.italic = italic
         self.color = settings.parse_color(color)
+
+
+def copy_run_formatting(source_run: Any, target_run: Any) -> None:
+    """Copy basic character formatting from source_run to target_run."""
+    target_run.bold = source_run.bold
+    target_run.italic = source_run.italic
+    target_run.underline = source_run.underline
+    if source_run.font:
+        if source_run.font.name:
+            target_run.font.name = source_run.font.name
+        if source_run.font.size:
+            target_run.font.size = source_run.font.size
+        if source_run.font.color and source_run.font.color.rgb:
+            target_run.font.color.rgb = source_run.font.color.rgb
 
 
 class ParagraphProperties:
@@ -154,8 +178,7 @@ def ensure_heading_style(
             font.bold = True
             font.size = settings.get_heading_size(level)
         except Exception as e:
-            # Log error but continue with other styles
-            print(f"Warning: Failed to ensure {style_name} style: {e}")
+            logger.warning("Failed to ensure %s style: %s", style_name, e)
 
 
 def ensure_table_style(doc: Document) -> None:
@@ -170,7 +193,7 @@ def ensure_table_style(doc: Document) -> None:
         try:
             doc.styles.add_style(style_name, WD_STYLE_TYPE.TABLE)
         except Exception as e:
-            print(f"Warning: Failed to create {style_name} style: {e}")
+            logger.warning("Failed to create %s style: %s", style_name, e)
 
 
 def create_style(

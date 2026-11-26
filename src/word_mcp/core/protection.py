@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import secrets
+from pathlib import Path
 from typing import Any
 
 from docx.document import Document
@@ -18,14 +19,19 @@ from word_mcp.core.document_context import atomic_write_target, document_context
 from word_mcp.exception import (
     DocumentProcessingError,
     FileOperationError,
+    SecurityError,
     ValidationError,
 )
+from word_mcp.utils.security import resolve_sandboxed_path
 
 
 logger = logging.getLogger(__name__)
 
 PBKDF2_ALGORITHM = "sha256"
 PBKDF2_ITERATIONS = 100_000
+MIN_PBKDF2_ITERATIONS = 100_000
+MAX_PBKDF2_ITERATIONS = 2_000_000
+MAX_METADATA_BYTES = 64 * 1024
 
 
 def hash_password(password: str, salt: str | None = None) -> str:
@@ -71,6 +77,8 @@ def verify_password(password: str, stored_hash: str) -> bool:
             _, iter_str, salt, expected_hash = parts
             try:
                 iterations = int(iter_str)
+                if not (MIN_PBKDF2_ITERATIONS <= iterations <= MAX_PBKDF2_ITERATIONS):
+                    return False
                 dk = hashlib.pbkdf2_hmac(
                     PBKDF2_ALGORITHM,
                     password.encode("utf-8"),
@@ -82,6 +90,97 @@ def verify_password(password: str, stored_hash: str) -> bool:
                 return False
 
     return False
+
+
+def _resolve_metadata_path(doc_path: str) -> Path:
+    """Resolve sibling .protection sidecar path within WORD_MCP_DIRS, rejecting symlinks."""
+    base_path, _ = os.path.splitext(doc_path)
+    raw_meta = f"{base_path}.protection"
+    raw_path_obj = Path(raw_meta)
+    resolved_parent = resolve_sandboxed_path(
+        raw_path_obj.parent, param_name="metadata_path"
+    )
+    unresolved_leaf = resolved_parent / raw_path_obj.name
+    if unresolved_leaf.is_symlink():
+        raise SecurityError(
+            f"Protection metadata path '{raw_meta}' must not be a symlink.",
+            suggestion="Remove the symlinked .protection file and re-apply protection.",
+        )
+    return resolve_sandboxed_path(unresolved_leaf, param_name="metadata_path")
+
+
+def _read_protection_metadata(metadata_path: Path) -> dict[str, Any]:
+    """Read and size-bound a .protection JSON sidecar safely."""
+    if metadata_path.is_symlink():
+        raise SecurityError(
+            f"Protection metadata path '{metadata_path}' must not be a symlink.",
+            suggestion="Remove the symlinked .protection file and re-apply protection.",
+        )
+    if metadata_path.stat().st_size > MAX_METADATA_BYTES:
+        raise DocumentProcessingError(
+            f"Protection metadata '{metadata_path}' exceeds maximum allowed size."
+        )
+    with open(metadata_path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise DocumentProcessingError("Protection metadata must be a JSON object.")
+    return data
+
+
+def _compute_document_content_hash(doc: Document) -> str:
+    """Hash body paragraphs, table cells, and headers/footers, excluding trailing signature block."""
+    para_texts = [p.text for p in doc.paragraphs]
+    if (
+        para_texts
+        and "Digitally signed by: " in para_texts[-1]
+        and "Signature ID: " in para_texts[-1]
+    ):
+        para_texts.pop()
+        if para_texts and para_texts[-1] == "":
+            para_texts.pop()
+    table_texts = [
+        cell.text for table in doc.tables for row in table.rows for cell in row.cells
+    ]
+    header_footer_texts = [
+        p.text
+        for section in doc.sections
+        for hf in (section.header, section.footer)
+        for p in hf.paragraphs
+    ]
+    combined = "\n".join(para_texts + table_texts + header_footer_texts)
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
+
+
+def _encrypt_docx_file(
+    doc_path: str, password: str, *, reject_if_encrypted: bool = False
+) -> None:
+    """Encrypt a .docx file in-place atomically via msoffcrypto."""
+    import msoffcrypto
+
+    try:
+        with open(doc_path, "rb") as f:
+            office_file = msoffcrypto.OfficeFile(f)
+            if reject_if_encrypted and office_file.is_encrypted():
+                raise DocumentProcessingError(
+                    "Document is already encrypted.",
+                    suggestion="Unprotect the document before applying new password encryption.",
+                )
+            encrypted_io = io.BytesIO()
+            office_file.encrypt(password=password, outfile=encrypted_io)
+
+        with atomic_write_target(doc_path) as tmp_path:
+            tmp_path.write_bytes(encrypted_io.getvalue())
+    except (
+        SecurityError,
+        DocumentProcessingError,
+        FileOperationError,
+        ValidationError,
+    ):
+        raise
+    except OSError as exc:
+        raise FileOperationError(f"Failed to encrypt document: {exc}") from exc
+    except Exception as exc:
+        raise DocumentProcessingError(f"Failed to encrypt document: {exc}") from exc
 
 
 def core_add_protection_info(
@@ -106,9 +205,7 @@ def core_add_protection_info(
     Returns:
         True if protection info was successfully added, False otherwise
     """
-    # Create metadata filename based on document path
-    base_path, _ = os.path.splitext(doc_path)
-    metadata_path = f"{base_path}.protection"
+    metadata_path = _resolve_metadata_path(doc_path)
 
     # Prepare protection data
     protection_data: dict[str, Any] = {
@@ -125,24 +222,8 @@ def core_add_protection_info(
 
     # Encrypt before writing metadata so .protection is persisted in a single atomic pass.
     if protection_type == "password" and raw_password:
-        import msoffcrypto
-
-        try:
-            with open(doc_path, "rb") as f:
-                office_file = msoffcrypto.OfficeFile(f)
-                encrypted_io = io.BytesIO()
-                office_file.encrypt(password=raw_password, outfile=encrypted_io)
-
-            with atomic_write_target(doc_path) as tmp_path:
-                tmp_path.write_bytes(encrypted_io.getvalue())
-
-            protection_data["true_encryption"] = True
-        except (FileOperationError, DocumentProcessingError):
-            raise
-        except OSError as exc:
-            raise FileOperationError(f"Failed to encrypt document: {exc}") from exc
-        except Exception as exc:
-            raise DocumentProcessingError(f"Failed to encrypt document: {exc}") from exc
+        _encrypt_docx_file(doc_path, raw_password)
+        protection_data["true_encryption"] = True
 
     with atomic_write_target(metadata_path) as meta_tmp:
         with open(meta_tmp, "w", encoding="utf-8") as f:
@@ -153,34 +234,18 @@ def core_add_protection_info(
 
 def core_protect_document(filename: str, password: str) -> dict[str, Any]:
     """Add password protection to a Word document using msoffcrypto."""
-    import msoffcrypto
+    metadata_path = _resolve_metadata_path(filename)
+    _encrypt_docx_file(filename, password, reject_if_encrypted=True)
 
     try:
-        with open(filename, "rb") as f:
-            office_file = msoffcrypto.OfficeFile(f)
-            if office_file.is_encrypted():
-                raise DocumentProcessingError(
-                    "Document is already encrypted.",
-                    suggestion="Unprotect the document before applying new password encryption.",
-                )
-            encrypted_io = io.BytesIO()
-            office_file.encrypt(password=password, outfile=encrypted_io)
-
-        with atomic_write_target(filename) as tmp_path:
-            tmp_path.write_bytes(encrypted_io.getvalue())
-
-        base_path, _ = os.path.splitext(filename)
-        metadata_path = f"{base_path}.protection"
-        if os.path.exists(metadata_path):
+        if metadata_path.exists() or metadata_path.is_symlink():
             os.remove(metadata_path)
-
-        return {"status": "success", "message": "Document encrypted successfully."}
-    except (DocumentProcessingError, FileOperationError, ValidationError):
-        raise
     except OSError as e:
-        raise FileOperationError(f"Failed to encrypt document: {e}") from e
-    except Exception as e:
-        raise DocumentProcessingError(f"Failed to encrypt document: {e}") from e
+        raise FileOperationError(
+            f"Failed to remove stale protection metadata: {e}"
+        ) from e
+
+    return {"status": "success", "message": "Document encrypted successfully."}
 
 
 def core_unprotect_document(filename: str, password: str) -> dict[str, Any]:
@@ -229,22 +294,26 @@ def core_verify_document_protection(
     Returns:
         Tuple of (is_protected_and_verified, message)
     """
-    base_path, _ = os.path.splitext(doc_path)
-    metadata_path = f"{base_path}.protection"
+    metadata_path = _resolve_metadata_path(doc_path)
 
     # Check if protection metadata exists
-    if not os.path.exists(metadata_path):
+    if not metadata_path.exists():
         import msoffcrypto
 
         try:
             with open(doc_path, "rb") as f:
                 office_file = msoffcrypto.OfficeFile(f)
                 if office_file.is_encrypted():
-                    if password:
+                    if password is not None:
+                        if not password:
+                            return False, "Incorrect password"
                         try:
                             office_file.load_key(password=password)
                             office_file.decrypt(outfile=io.BytesIO())
-                            return True, "Document is password-encrypted and password verified"
+                            return (
+                                True,
+                                "Document is password-encrypted and password verified",
+                            )
                         except msoffcrypto.exceptions.InvalidKeyError:
                             return False, "Incorrect password"
                     return True, "Document is protected with password protection"
@@ -253,25 +322,30 @@ def core_verify_document_protection(
                 f"File '{doc_path}' is not a valid Word document (.docx)."
             ) from exc
         except OSError as exc:
-            raise FileOperationError(f"Cannot read document '{doc_path}': {exc}") from exc
+            raise FileOperationError(
+                f"Cannot read document '{doc_path}': {exc}"
+            ) from exc
         return False, "Document is not protected"
 
     try:
-        # Read protection data
-        with open(metadata_path) as f:
-            protection_data = json.load(f)
+        protection_data = _read_protection_metadata(metadata_path)
+        protection_type = str(protection_data.get("type", "unknown"))
 
-        # If password is provided, verify it
-        if password:
+        if password is not None and not (
+            protection_type == "signature" and not protection_data.get("password_hash")
+        ):
             stored_hash = protection_data.get("password_hash", "")
-            if not verify_password(password, stored_hash):
+            if not password or not verify_password(password, stored_hash):
                 return False, "Incorrect password"
 
-        # Return protection type
-        protection_type = protection_data.get("type", "unknown")
+        if protection_type == "signature":
+            return core_verify_signature(doc_path)
+
         return True, f"Document is protected with {protection_type} protection"
 
-    except (OSError, json.JSONDecodeError) as e:
+    except SecurityError:
+        raise
+    except (OSError, json.JSONDecodeError, DocumentProcessingError) as e:
         return False, f"Error verifying protection: {str(e)}"
 
 
@@ -286,29 +360,23 @@ def core_is_section_editable(doc_path: str, section_name: str) -> bool:
     Returns:
         True if section is editable, False otherwise
     """
-    base_path, _ = os.path.splitext(doc_path)
-    metadata_path = f"{base_path}.protection"
+    metadata_path = _resolve_metadata_path(doc_path)
 
-    # Check if protection metadata exists
-    if not os.path.exists(metadata_path):
-        # If no protection exists, all sections are editable
+    if not metadata_path.exists():
         return True
 
     try:
-        # Read protection data
-        with open(metadata_path) as f:
-            protection_data: dict[str, Any] = json.load(f)
+        protection_data = _read_protection_metadata(metadata_path)
 
-        # Check protection type
         if protection_data.get("type") != "restricted":
-            # If not restricted editing, return based on protection type
             return protection_data.get("type") != "password"
 
-        # Check if the section is in the list of editable sections
         editable_sections: list[str] = protection_data.get("editable_sections", [])
         return section_name in editable_sections
 
-    except (OSError, json.JSONDecodeError, KeyError):
+    except SecurityError:
+        raise
+    except (OSError, json.JSONDecodeError, KeyError, DocumentProcessingError):
         return False
 
 
@@ -326,7 +394,6 @@ def core_create_signature_info(
     Returns:
         Dictionary containing signature information
     """
-    # Create signature info
     signature_info: dict[str, Any] = {
         "signer": signer_name,
         "timestamp": datetime.datetime.now().isoformat(),
@@ -335,11 +402,7 @@ def core_create_signature_info(
     if reason:
         signature_info["reason"] = reason
 
-    # Generate a simple signature hash based on document content and metadata
-    text_content = "\n".join([p.text for p in doc.paragraphs])
-    content_hash = hashlib.sha256(text_content.encode()).hexdigest()
-    signature_info["content_hash"] = content_hash
-
+    signature_info["content_hash"] = _compute_document_content_hash(doc)
     return signature_info
 
 
@@ -353,15 +416,13 @@ def core_verify_signature(doc_path: str) -> tuple[bool, str]:
     Returns:
         Tuple of (is_valid, message)
     """
-    base_path, _ = os.path.splitext(doc_path)
-    metadata_path = f"{base_path}.protection"
+    metadata_path = _resolve_metadata_path(doc_path)
 
-    if not os.path.exists(metadata_path):
+    if not metadata_path.exists():
         return False, "Document is not signed"
 
     try:
-        with open(metadata_path, encoding="utf-8") as f:
-            protection_data = json.load(f)
+        protection_data = _read_protection_metadata(metadata_path)
 
         if protection_data.get("type") != "signature":
             return (
@@ -376,10 +437,17 @@ def core_verify_signature(doc_path: str) -> tuple[bool, str]:
             return False, "Invalid signature: missing content hash"
 
         with document_context(doc_path, mode="read") as doc:
-            text_content = "\n".join([p.text for p in doc.paragraphs])
-        current_hash = hashlib.sha256(text_content.encode()).hexdigest()
+            current_hash = _compute_document_content_hash(doc)
+            last_para = doc.paragraphs[-1].text if doc.paragraphs else ""
 
-        if current_hash != original_hash:
+        expected_signer = str(signature_info.get("signer", ""))
+        if current_hash != original_hash or (
+            expected_signer
+            and (
+                f"Digitally signed by: {expected_signer}" not in last_para
+                or f"Signature ID: {original_hash[:8]}" not in last_para
+            )
+        ):
             return (
                 False,
                 f"Document has been modified since it was signed by {signature_info.get('signer')}",
@@ -390,6 +458,8 @@ def core_verify_signature(doc_path: str) -> tuple[bool, str]:
             f"Document signature is valid. Signed by {signature_info.get('signer')} on {signature_info.get('timestamp')}",
         )
 
+    except SecurityError:
+        raise
     except (
         OSError,
         json.JSONDecodeError,
@@ -404,21 +474,26 @@ def remove_protection_info(
     filename: str, password: str | None = None
 ) -> tuple[bool, str]:
     """Remove protection metadata and decrypt the document if encrypted."""
-    base_path, _ = os.path.splitext(filename)
-    metadata_path = f"{base_path}.protection"
+    try:
+        metadata_path = _resolve_metadata_path(filename)
+    except (SecurityError, ValidationError) as exc:
+        return False, f"Error removing protection: {exc}"
 
-    if not os.path.exists(metadata_path):
+    if not metadata_path.exists():
         return False, "Document is not protected"
 
     try:
-        with open(metadata_path, encoding="utf-8") as f:
-            protection_data = json.load(f)
+        protection_data = _read_protection_metadata(metadata_path)
 
-        if password and protection_data.get("password_hash"):
-            if not verify_password(password, protection_data.get("password_hash", "")):
+        if protection_data.get("password_hash"):
+            if not password or not verify_password(
+                password, protection_data.get("password_hash", "")
+            ):
                 return False, "Incorrect password"
 
-        if protection_data.get("true_encryption") and password:
+        if protection_data.get("true_encryption"):
+            if not password:
+                return False, "Incorrect password"
             try:
                 core_unprotect_document(filename, password)
             except (

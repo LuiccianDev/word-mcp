@@ -30,6 +30,12 @@ from word_mcp.utils.security import resolve_sandboxed_path
 
 F = TypeVar("F", bound=Callable[..., Any])
 
+MAX_ZIP_ENTRIES = 5_000
+MAX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+MAX_SINGLE_ENTRY_BYTES = 50 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 100
+RATIO_CHECK_THRESHOLD_BYTES = 1024 * 1024
+
 
 class PathAccess(StrEnum):
     """Access policies enforced by the tool boundary before executing tool bodies."""
@@ -88,12 +94,38 @@ class PathRule:
 
 
 def _fast_check_ooxml_zip(path: Path) -> None:
-    """Verify OOXML ZIP container structure without full XML DOM parsing."""
+    """Verify OOXML ZIP container structure and decompression bounds."""
     try:
         # Open ZipFile directly instead of zipfile.is_zipfile so OS sharing/lock
         # PermissionErrors surface as file_operation rather than looking corrupt.
         with zipfile.ZipFile(path, "r") as zf:
-            names = set(zf.namelist())
+            infos = zf.infolist()
+            if len(infos) > MAX_ZIP_ENTRIES:
+                raise DocumentProcessingError(
+                    f"Archive '{path}' exceeds maximum entry count ({len(infos)} > {MAX_ZIP_ENTRIES}).",
+                    suggestion="Reduce the number of embedded objects in the .docx archive.",
+                )
+            total_uncompressed = 0
+            for info in infos:
+                if info.file_size > MAX_SINGLE_ENTRY_BYTES:
+                    raise DocumentProcessingError(
+                        f"Archive entry '{info.filename}' exceeds maximum uncompressed size ({info.file_size} > {MAX_SINGLE_ENTRY_BYTES}).",
+                        suggestion="The document contains an oversized embedded part (potential ZIP bomb).",
+                    )
+                total_uncompressed += info.file_size
+                if total_uncompressed > MAX_UNCOMPRESSED_BYTES:
+                    raise DocumentProcessingError(
+                        f"Archive '{path}' exceeds maximum total uncompressed size ({total_uncompressed} > {MAX_UNCOMPRESSED_BYTES}).",
+                        suggestion="The document exceeds safe uncompressed size limits (potential ZIP bomb).",
+                    )
+                if info.file_size >= RATIO_CHECK_THRESHOLD_BYTES:
+                    compressed = max(1, info.compress_size)
+                    if info.file_size / compressed > MAX_COMPRESSION_RATIO:
+                        raise DocumentProcessingError(
+                            f"Archive entry '{info.filename}' exceeds maximum compression ratio.",
+                            suggestion="The document appears to contain an abnormal compression ratio (potential ZIP bomb).",
+                        )
+            names = {info.filename for info in infos}
     except zipfile.BadZipFile as exc:
         raise DocumentProcessingError(
             f"File '{path}' is not a valid Word document (.docx).",
@@ -125,16 +157,13 @@ def _check_file_writeable(path_value: str | Path) -> tuple[bool, str]:
     """Check if a file is writeable or can be created in its parent directory."""
     try:
         path = Path(path_value).resolve()
-        if path.exists():
-            if not os.access(path, os.W_OK):
-                return False, f"File '{path}' is not writeable."
-            return True, ""
-
         parent = path.parent
         if not parent.exists():
             return False, f"Parent directory '{parent}' does not exist."
         if not os.access(parent, os.W_OK):
             return False, f"Parent directory '{parent}' is not writeable."
+        if path.exists() and not os.access(path, os.W_OK):
+            return False, f"File '{path}' is not writeable."
         return True, ""
     except Exception as exc:
         return False, str(exc)

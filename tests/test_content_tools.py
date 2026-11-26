@@ -70,9 +70,6 @@ async def test_add_picture_with_patch(temp_docx_file: str, tmp_path: Path) -> No
 
             result = await content_tools.add_picture(temp_docx_file, str(image_path))
 
-            # Debug print to see what we actually got
-            print(f"DEBUG mock_core.call_args: {mock_core.call_args}")
-
             mock_core.assert_called_once()
             args, kwargs = mock_core.call_args
             assert args[0] == mock_doc

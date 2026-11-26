@@ -13,10 +13,27 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.table import Table, _Cell, _Row
 
+from word_mcp.core.styles import copy_run_formatting
+
 
 # Type aliases for better code readability
 CellBorderStyle = dict[str, str | bool | int]
 TableShading = list[list[str | None]]
+
+MAX_TABLE_ROWS = 5_000
+MAX_TABLE_COLS = 100
+MAX_TABLE_CELLS = 50_000
+
+
+def validate_table_dimensions(rows: int, cols: int) -> None:
+    """Enforce positive and bounded table dimensions."""
+    if rows <= 0 or cols <= 0:
+        raise ValueError("Rows and columns must be positive integers")
+    if rows > MAX_TABLE_ROWS or cols > MAX_TABLE_COLS or rows * cols > MAX_TABLE_CELLS:
+        raise ValueError(
+            f"Table dimensions ({rows}x{cols}) exceed limits "
+            f"(max {MAX_TABLE_ROWS} rows, {MAX_TABLE_COLS} cols, {MAX_TABLE_CELLS} cells)."
+        )
 
 
 def set_cell_border(cell: _Cell, **kwargs: str | bool | int) -> None:
@@ -69,7 +86,7 @@ def set_cell_border(cell: _Cell, **kwargs: str | bool | int) -> None:
                 border_element.set(qn(f"w:{attr}"), value)
 
             # Add or update the border element
-            existing_border = tc_borders.find(f"{{*}}{border_tag}")
+            existing_border = tc_borders.find(qn(border_tag))
             if existing_border is not None:
                 tc_borders.remove(existing_border)
             tc_borders.append(border_element)
@@ -157,8 +174,7 @@ def core_add_table(
     Returns:
         Table: The newly created table.
     """
-    if rows <= 0 or cols <= 0:
-        raise ValueError("Rows and columns must be positive integers")
+    validate_table_dimensions(rows, cols)
 
     table: Table = doc.add_table(rows=rows, cols=cols)
     table.style = "Table Grid"
@@ -223,7 +239,7 @@ def _apply_shading(table: Table, shading: TableShading) -> None:
         table: The table to apply shading to.
         shading: 2D list of color values (by row and column).
     """
-    HEX_COLOR_RE = re.compile(r"^[0-9A-Fa-f]{6}$")  # noqa: N806
+    HEX_COLOR_RE = re.compile(r"\A[0-9A-Fa-f]{6}\Z")  # noqa: N806
 
     for i, row_colors in enumerate(shading):
         if i >= len(table.rows):
@@ -233,13 +249,20 @@ def _apply_shading(table: Table, shading: TableShading) -> None:
             if j >= len(table.rows[i].cells) or not color:
                 continue
 
-            if not HEX_COLOR_RE.match(color):
+            cleaned_color = color.lstrip("#")
+            if not HEX_COLOR_RE.match(cleaned_color):
                 continue
 
             try:
                 cell = table.rows[i].cells[j]
-                shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color}"/>')
-                cell._tc.get_or_add_tcPr().append(shading_elm)
+                tc_pr = cell._tc.get_or_add_tcPr()
+                existing_shd = tc_pr.find(qn("w:shd"))
+                if existing_shd is not None:
+                    tc_pr.remove(existing_shd)
+                shading_elm = parse_xml(
+                    f'<w:shd {nsdecls("w")} w:fill="{cleaned_color}"/>'
+                )
+                tc_pr.append(shading_elm)
             except (ValueError, AttributeError):
                 # Skip invalid color formats or malformed XML
                 continue
@@ -291,14 +314,7 @@ def _copy_table_cell_contents(source_cell: _Cell, target_cell: _Cell) -> None:
         # Copy text and formatting from each run
         for run in source_paragraph.runs:
             new_run = target_paragraph.add_run(run.text)
-            # Copy run properties
-            new_run.bold = run.bold
-            new_run.italic = run.italic
-            new_run.underline = run.underline
-            if run.font:
-                new_run.font.name = run.font.name
-                new_run.font.size = run.font.size
-                new_run.font.color.rgb = run.font.color.rgb
+            copy_run_formatting(run, new_run)
 
 
 def _get_or_create_tc_borders(tc_properties: Any) -> Any:

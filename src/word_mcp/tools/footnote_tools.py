@@ -17,6 +17,7 @@ from word_mcp.core import (
     get_format_symbols,
 )
 from word_mcp.core.document_context import document_context
+from word_mcp.core.footnotes import validate_start_number
 from word_mcp.models.response_models import (
     EndnoteResult,
     FootnoteResult,
@@ -85,13 +86,20 @@ async def customize_footnote_style(
     font_size: int | None = None,
 ) -> dict[str, Any]:
     """Customize footnote numbering and formatting in a Word document."""
+    validate_start_number(start_number)
+
     with document_context(filename, mode="write") as doc:
         footnote_refs = find_footnote_references(doc)
         format_symbols = get_format_symbols(
             numbering_format, len(footnote_refs) + start_number
         )
         count = core_customize_footnote_formatting(
-            doc, footnote_refs, format_symbols, start_number
+            doc,
+            footnote_refs,
+            format_symbols,
+            start_number,
+            font_name=font_name,
+            font_size=font_size,
         )
 
     return OperationResult(

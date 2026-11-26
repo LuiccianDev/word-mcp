@@ -18,6 +18,7 @@ from word_mcp.core import (
     hash_password,
 )
 from word_mcp.core.document_context import document_context
+from word_mcp.core.protection import _resolve_metadata_path
 from word_mcp.exception import ValidationError
 from word_mcp.models.response_models import ProtectionResult
 from word_mcp.validation.document_validators import (
@@ -27,9 +28,18 @@ from word_mcp.validation.document_validators import (
 )
 
 
+def _require_non_empty_password(password: str) -> None:
+    if not password or not password.strip():
+        raise ValidationError(
+            "Password cannot be empty.",
+            suggestion="Provide a non-empty password string.",
+        )
+
+
 @validate_docx_write("filename")
 async def protect_document(filename: str, password: str) -> dict[str, Any]:
     """Add password protection to a Word document."""
+    _require_non_empty_password(password)
     result = core_protect_document(filename, password)
 
     return ProtectionResult(
@@ -44,6 +54,7 @@ async def protect_document(filename: str, password: str) -> dict[str, Any]:
 @validate_file_write("filename")
 async def unprotect_document(filename: str, password: str) -> dict[str, Any]:
     """Remove password protection from a Word document."""
+    _require_non_empty_password(password)
     result = core_unprotect_document(filename, password)
 
     return ProtectionResult(
@@ -60,6 +71,7 @@ async def add_restricted_editing(
     filename: str, password: str, editable_sections: list[str]
 ) -> dict[str, Any]:
     """Add restricted editing to a Word document."""
+    _require_non_empty_password(password)
     if not editable_sections:
         raise ValidationError(
             "No editable sections specified.",
@@ -88,6 +100,7 @@ async def add_digital_signature(
     filename: str, signer_name: str, reason: str | None = None
 ) -> dict[str, Any]:
     """Add a digital signature to a Word document."""
+    _resolve_metadata_path(filename)
     with document_context(filename, mode="write") as doc:
         signature_info = core_create_signature_info(doc, signer_name, reason)
 

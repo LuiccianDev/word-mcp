@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Rejected Win32 device prefixes, unauthorized UNC network paths, and Windows reserved DOS device names in `resolve_sandboxed_path` before filesystem resolution.
+- Added OOXML ZIP container entry count, uncompressed size, and compression ratio bounds in `_fast_check_ooxml_zip` to prevent ZIP bomb memory exhaustion.
+- Required `--allow-remote` before binding `--transport sse` to non-loopback hosts in `word_mcp.__main__`.
+- Enforced `WORD_MCP_DIRS` sandbox containment, symlink rejection, and 64 KiB size limits on `.protection` sidecar reads/deletes, and bounded PBKDF2 iterations (`100_000..2_000_000`).
+- Fixed empty-password (`""`) bypass in `core_verify_document_protection` and missing password checks in `remove_protection_info`, and rejected empty passwords in protection tools.
+- Connected `core_verify_signature` to `verify_document`, hashed paragraphs and table cells excluding the trailing signature block so tamper detection works end to end.
+- Enforced `http://`, `https://`, and `mailto:` allowlisting in `core_add_hyperlink` and `batch.py` inline links.
+- Staged LibreOffice PDF conversions in a private temporary directory and verified PDF output existence before replacing target files.
+- Filtered symlinks and non-files in `list_available_documents` and verified parent directory writeability in `_check_file_writeable`.
+- Hardened `.github/workflows/release.yml` against tag/input shell injection and added explicit read-only `permissions` and `ruff format --check` to `.github/workflows/ci.yml`.
+- Upgraded locked dependencies (`fastmcp 4.2.6`, `mcp 2.3.0`, `cryptography 50.0.2`, `lxml 6.1.3`, `msoffcrypto-tool 6.1.0`, `starlette 1.10.0`, `pillow 13.0.0`) to resolve all 179 `pip-audit` advisories.
+
+### Fixed
+- Replaced `print()` warnings in `core/styles.py` with `logger.warning` so `stdio` JSON-RPC framing is never corrupted, and normalized hex color / `Pt()` size handling in `create_style`.
+- Enforced resource caps on table dimensions, batch elements, list nesting depth, and footnote `start_number`, and wired `font_name`/`font_size` in `customize_footnote_style`.
+- Preserved sibling run styling in `core_format_text`, supported cross-run and header/footer replacement with accurate counts in `core_find_and_replace_text`, and preserved multi-run formatting and interleaved table order in `core_merge_documents`.
+- Fixed Clark notation border replacement (`qn()`), duplicate `<w:shd>` removal, and unique bookmark `w:id` generation, updated `server.py` `instructions` for active `WORD_MCP_TOOLS` mode, and replaced `" | Pág. "` with `" | Page "`.
+
 ---
 
 ## [3.2.0] - 2026-11-18

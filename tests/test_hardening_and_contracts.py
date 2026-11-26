@@ -371,7 +371,9 @@ async def test_thermos_edge_cases_batch_image_positional_dir_and_corrupt_verify(
     from word_mcp.tools.compound_tools import _GROUP_SPECS, _get_action_spec
 
     for spec in _GROUP_SPECS:
-        action_spec = _get_action_spec(spec.example_action, spec.actions[spec.example_action])
+        action_spec = _get_action_spec(
+            spec.example_action, spec.actions[spec.example_action]
+        )
         bound = action_spec.bind_and_validate(spec.name, spec.example_params)
         assert bound
 
@@ -407,3 +409,279 @@ async def test_thermos_edge_cases_batch_image_positional_dir_and_corrupt_verify(
     _assert_canonical_error(
         verify_empty, error_type="document_processing", recoverable=True
     )
+
+
+@pytest.mark.asyncio
+async def test_security_unc_device_and_reserved_names_rejected_before_resolve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
+
+    for bad_path in (
+        r"\\attacker.example\share\evil.docx",
+        "//attacker.example/share/evil.docx",
+        r"\\.\pipe\word_mcp_probe",
+        r"\\?\C:\temp\evil.docx",
+    ):
+        res = await document_tools.get_document_text(bad_path)
+        _assert_canonical_error(res, error_type="security_violation", recoverable=False)
+
+    for reserved_name in ("CON.docx", "NUL.docx", "COM1.docx"):
+        res = await document_tools.create_document(str(tmp_path / reserved_name))
+        _assert_canonical_error(res, error_type="validation", recoverable=False)
+
+
+@pytest.mark.asyncio
+async def test_ooxml_zip_bomb_rejected_before_document_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import zipfile
+
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
+    bomb_path = tmp_path / "bomb.docx"
+    with zipfile.ZipFile(bomb_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", "<Types/>")
+        zf.writestr("word/document.xml", "A" * (2 * 1024 * 1024))
+
+    res = await document_tools.get_document_text(str(bomb_path))
+    _assert_canonical_error(res, error_type="document_processing", recoverable=True)
+
+
+@pytest.mark.asyncio
+async def test_protection_empty_password_signature_tamper_and_sidecar_hardening(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from word_mcp.core.protection import remove_protection_info, verify_password
+
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
+
+    enc_doc = tmp_path / "enc.docx"
+    Document().save(enc_doc)
+    await protection_tools.protect_document(str(enc_doc), "TopSecret1!")
+
+    empty_enc = await protection_tools.verify_document(str(enc_doc), password="")
+    assert empty_enc["status"] == "success"
+    assert empty_enc["success"] is False
+
+    restricted_doc = tmp_path / "restricted.docx"
+    Document().save(restricted_doc)
+    await protection_tools.add_restricted_editing(
+        str(restricted_doc), "Restr1!", ["Section 1"]
+    )
+    empty_restr = await protection_tools.verify_document(
+        str(restricted_doc), password=""
+    )
+    assert empty_restr["status"] == "success"
+    assert empty_restr["success"] is False
+
+    ok_remove, msg_remove = remove_protection_info(str(restricted_doc), password="")
+    assert ok_remove is False
+    assert msg_remove == "Incorrect password"
+    ok_none, _ = remove_protection_info(str(restricted_doc), password=None)
+    assert ok_none is False
+
+    assert verify_password("pw", "pbkdf2_sha256$999999999$salt$abcd") is False
+    assert verify_password("pw", "pbkdf2_sha256$1$salt$abcd") is False
+
+    signed_doc = tmp_path / "signed.docx"
+    d = Document()
+    d.add_paragraph("Contract Clause 1")
+    tbl = d.add_table(rows=1, cols=2)
+    tbl.cell(0, 0).text = "Amount"
+    tbl.cell(0, 1).text = "$100"
+    d.save(signed_doc)
+
+    sign_res = await protection_tools.add_digital_signature(
+        str(signed_doc), "Alice", reason="Approval"
+    )
+    assert sign_res["status"] == "success"
+
+    verify_ok = await protection_tools.verify_document(str(signed_doc))
+    assert verify_ok["status"] == "success"
+    assert verify_ok["success"] is True
+
+    tampered = Document(signed_doc)
+    tampered.tables[0].cell(0, 1).text = "$999"
+    tampered.save(signed_doc)
+
+    verify_tampered = await protection_tools.verify_document(str(signed_doc))
+    assert verify_tampered["status"] == "success"
+    assert verify_tampered["success"] is False
+
+
+@pytest.mark.asyncio
+async def test_protection_sidecar_symlink_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
+    doc_path = tmp_path / "linked.docx"
+    Document().save(doc_path)
+    outside_secret = tmp_path.parent / "outside_secret.json"
+    outside_secret.write_text('{"type": "password"}', encoding="utf-8")
+    meta_link = tmp_path / "linked.protection"
+
+    try:
+        os.symlink(outside_secret, meta_link)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlink creation requires elevated privileges on this host")
+
+    res = await protection_tools.verify_document(str(doc_path))
+    _assert_canonical_error(res, error_type="security_violation", recoverable=False)
+
+
+@pytest.mark.asyncio
+async def test_hyperlink_scheme_allowlist_and_unique_bookmark_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docx.oxml.ns import qn
+
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
+    doc_path = tmp_path / "links.docx"
+    doc = Document()
+    doc.add_paragraph("Visit link")
+    doc.save(doc_path)
+
+    for unsafe in (
+        "javascript:alert(1)",
+        "file:///etc/passwd",
+        r"\\attacker\share\doc",
+        "smb://attacker/share",
+    ):
+        bad = await content_tools.add_hyperlink(str(doc_path), 0, "Bad", url=unsafe)
+        _assert_canonical_error(bad, error_type="validation", recoverable=False)
+
+    ok_https = await content_tools.add_hyperlink(
+        str(doc_path), 0, "Safe", url="https://example.com"
+    )
+    assert ok_https["status"] == "success"
+    ok_mailto = await content_tools.add_hyperlink(
+        str(doc_path), 0, "Mail", url="mailto:security@example.com"
+    )
+    assert ok_mailto["status"] == "success"
+
+    await content_tools.add_bookmark(str(doc_path), 0, "BM1")
+    await content_tools.add_bookmark(str(doc_path), 0, "BM2")
+    reloaded = Document(doc_path)
+    ids = [el.get(qn("w:id")) for el in reloaded.element.xpath(".//w:bookmarkStart")]
+    assert ids == ["0", "1"]
+
+
+@pytest.mark.asyncio
+async def test_resource_caps_and_list_available_documents_hygiene(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from word_mcp.tools import footnote_tools
+
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
+    doc_path = tmp_path / "bounds.docx"
+    Document().save(doc_path)
+
+    bad_table = await content_tools.add_table(str(doc_path), rows=50_000, cols=10)
+    _assert_canonical_error(bad_table, error_type="validation", recoverable=False)
+
+    bad_fn = await footnote_tools.customize_footnote_style(
+        str(doc_path), start_number=100_000
+    )
+    _assert_canonical_error(bad_fn, error_type="validation", recoverable=False)
+
+    (tmp_path / "folder.docx").mkdir()
+    listed = await document_tools.list_available_documents(directory=str(tmp_path))
+    assert listed["status"] == "success"
+    assert [d["name"] for d in listed["documents"]] == ["bounds.docx"]
+
+
+@pytest.mark.asyncio
+async def test_core_format_search_replace_and_merge_preserve_structure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("WORD_MCP_DIRS", str(tmp_path))
+
+    fmt_path = tmp_path / "fmt.docx"
+    d = Document()
+    p = d.add_paragraph()
+    r1 = p.add_run("Hello ")
+    r1.bold = True
+    p.add_run("world today")
+    d.save(fmt_path)
+
+    await content_tools.batch_edit_document(
+        str(fmt_path),
+        operations=[{"op": "replace_text", "old_text": "Hello", "new_text": "Hi"}],
+    )
+    from word_mcp.tools import format_tools
+
+    await format_tools.format_text(str(fmt_path), 0, 3, 8, italic=True)
+    reloaded_fmt = Document(fmt_path)
+    assert reloaded_fmt.paragraphs[0].text == "Hi world today"
+    assert reloaded_fmt.paragraphs[0].runs[0].bold is True
+    assert reloaded_fmt.paragraphs[0].runs[1].italic is True
+
+    split_path = tmp_path / "split.docx"
+    sd = Document()
+    sp = sd.add_paragraph()
+    sp.add_run("{{CLIENT_")
+    sp.add_run("NAME}} and {{CLIENT_")
+    sp.add_run("NAME}}")
+    sd.sections[0].header.paragraphs[0].text = "Header {{CLIENT_NAME}}"
+    sd.add_section()
+    sd.save(split_path)
+
+    rep_res = await content_tools.search_and_replace(
+        str(split_path), "{{CLIENT_NAME}}", "Acme"
+    )
+    assert rep_res["status"] == "success"
+    assert rep_res["details"]["replacements_made"] == 3
+    reloaded_split = Document(split_path)
+    assert reloaded_split.paragraphs[0].text == "Acme and Acme"
+    assert reloaded_split.sections[0].header.paragraphs[0].text == "Header Acme"
+
+    rep_expand = await content_tools.search_and_replace(
+        str(split_path), "Acme", "Acme Corp"
+    )
+    assert rep_expand["status"] == "success"
+    assert rep_expand["details"]["replacements_made"] == 3
+    assert (
+        Document(split_path).sections[0].header.paragraphs[0].text == "Header Acme Corp"
+    )
+
+    src1 = tmp_path / "src1.docx"
+    s1 = Document()
+    mp = s1.add_paragraph()
+    mr1 = mp.add_run("Bold ")
+    mr1.bold = True
+    mr2 = mp.add_run("Italic")
+    mr2.italic = True
+    t = s1.add_table(rows=1, cols=1)
+    t.cell(0, 0).text = "Middle Table"
+    s1.add_paragraph("After Table")
+    s1.save(src1)
+
+    merged_path = tmp_path / "merged.docx"
+    merge_res = await document_tools.merge_documents(
+        str(merged_path), [str(src1)], add_page_breaks=False
+    )
+    assert merge_res["status"] == "success"
+    merged = Document(merged_path)
+    body_tags = [child.tag.rsplit("}", 1)[-1] for child in merged.element.body]
+    p_indices = [i for i, tag in enumerate(body_tags) if tag == "p"]
+    tbl_indices = [i for i, tag in enumerate(body_tags) if tag == "tbl"]
+    assert len(tbl_indices) == 1
+    assert p_indices[0] < tbl_indices[0] < p_indices[-1]
+    assert merged.paragraphs[0].runs[0].bold is True
+    assert merged.paragraphs[0].runs[1].italic is True
+
+
+def test_cli_sse_rejects_non_loopback_without_allow_remote(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sys
+
+    from word_mcp.__main__ import main
+
+    monkeypatch.setattr(
+        sys, "argv", ["luiccian-word-mcp", "--transport", "sse", "--host", "0.0.0.0"]
+    )
+    with pytest.raises(SystemExit, match="allow-remote"):
+        main()

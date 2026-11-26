@@ -13,6 +13,9 @@ import sys
 from word_mcp import __version__
 
 
+_LOOPBACK_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -42,12 +45,28 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         default=8000,
         help="Port number for SSE transport (default: 8000)",
     )
+    parser.add_argument(
+        "--allow-remote",
+        action="store_true",
+        default=False,
+        help="Allow binding SSE transport to non-loopback interfaces (use only behind an authenticated reverse proxy)",
+    )
     return parser.parse_args(args)
 
 
 def main() -> None:
     """Main CLI entry point."""
     parsed = parse_args(sys.argv[1:])
+    if (
+        parsed.transport == "sse"
+        and parsed.host.strip().lower() not in _LOOPBACK_HOSTS
+        and not parsed.allow_remote
+    ):
+        raise SystemExit(
+            "Error: Binding SSE transport to a non-loopback host requires --allow-remote "
+            "because SSE transport has no built-in authentication."
+        )
+
     from word_mcp.server import create_server
 
     mcp = create_server()

@@ -164,7 +164,11 @@ class ActionSpec:
         valid_names = {p.name for p in self.parameters}
 
         for alias, canonical in _PARAM_ALIASES.items():
-            if alias in params and canonical in valid_names and alias not in valid_names:
+            if (
+                alias in params
+                and canonical in valid_names
+                and alias not in valid_names
+            ):
                 if canonical in params:
                     raise ToolError(
                         f"{where}: provide either '{canonical}' or '{alias}', not both."
@@ -181,9 +185,7 @@ class ActionSpec:
                 f"Valid parameters: {valid_str}."
             )
 
-        req_str = (
-            ", ".join(f"{k} ({tp})" for k, tp in self.required.items()) or "none"
-        )
+        req_str = ", ".join(f"{k} ({tp})" for k, tp in self.required.items()) or "none"
         opt_str = ", ".join(self.optional) or "none"
         for req_name in self.required:
             if req_name not in params:
@@ -385,8 +387,8 @@ _PROPERTY_ACTIONS: dict[str, _ToolFn] = {
     "set_page_layout": property_tools.set_page_layout,
 }
 
-_WRITE_ANNOTATIONS = ToolAnnotations(readOnlyHint=False)
-_DESTRUCTIVE_ANNOTATIONS = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
+_WRITE_ANNOTATIONS = ToolAnnotations(read_only_hint=False)
+_DESTRUCTIVE_ANNOTATIONS = ToolAnnotations(read_only_hint=False, destructive_hint=True)
 
 _GROUP_SPECS: tuple[CompoundGroupSpec, ...] = (
     CompoundGroupSpec(
