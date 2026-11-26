@@ -303,7 +303,9 @@ Texto después del salto de página.
         doc = Document(self.doc_path)
         self.assertEqual(len(doc.tables), 2)
         self.assertIn("NOTE", doc.tables[0].cell(0, 0).text)
-        self.assertIn("First line of note. Second line with bold.", doc.tables[0].cell(0, 0).text)
+        self.assertIn(
+            "First line of note. Second line with bold.", doc.tables[0].cell(0, 0).text
+        )
         self.assertIn("CAUTION", doc.tables[1].cell(0, 0).text)
         self.assertIn("Do not skip validation.", doc.tables[1].cell(0, 0).text)
 

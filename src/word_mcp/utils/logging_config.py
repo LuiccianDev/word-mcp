@@ -20,10 +20,14 @@ def is_dev_mode() -> bool:
 def resolve_log_level(explicit_level: str | None = None) -> int:
     """Resolve the active logging level from explicit override or WORD_MCP_LOG_LEVEL."""
     raw = (
-        explicit_level
-        or (os.environ.get("WORD_MCP_LOG_LEVEL") or "").strip()
-        or ("DEBUG" if is_dev_mode() else "INFO")
-    ).strip().upper()
+        (
+            explicit_level
+            or (os.environ.get("WORD_MCP_LOG_LEVEL") or "").strip()
+            or ("DEBUG" if is_dev_mode() else "INFO")
+        )
+        .strip()
+        .upper()
+    )
     normalized = _LOG_LEVEL_ALIASES.get(raw, raw)
     if normalized not in VALID_LOG_LEVELS:
         valid = ", ".join(VALID_LOG_LEVELS)

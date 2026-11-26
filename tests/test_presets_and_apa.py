@@ -44,7 +44,10 @@ def test_apply_profile_typography_apa_and_report():
     assert doc_apa.styles["Normal"].font.name == "Times New Roman"
     assert doc_apa.styles["Normal"].font.size == Pt(12)
     assert doc_apa.styles["Heading 1"].font.name == "Times New Roman"
-    assert doc_apa.styles["Heading 1"].paragraph_format.alignment == WD_ALIGN_PARAGRAPH.CENTER
+    assert (
+        doc_apa.styles["Heading 1"].paragraph_format.alignment
+        == WD_ALIGN_PARAGRAPH.CENTER
+    )
     assert doc_apa.styles["Heading 3"].font.italic is True
 
     doc_rep = Document()
@@ -62,9 +65,7 @@ def test_core_add_table_of_contents_enables_update_fields_and_dirty():
     from word_mcp.core.content import core_add_table_of_contents
 
     doc = Document()
-    res = core_add_table_of_contents(
-        doc, title="Índice", max_level=3, page_break=False
-    )
+    res = core_add_table_of_contents(doc, title="Índice", max_level=3, page_break=False)
     assert res["title"] == "Índice"
 
     update_fields = doc.settings.element.find(qn("w:updateFields"))
@@ -100,7 +101,12 @@ def test_core_build_document_report_and_apa_dynamic_elements():
         title="Annual Report",
         preset="report",
         elements=[
-            {"type": "title_block", "title": "Annual Report", "subtitle": "Q4", "author": "Team"},
+            {
+                "type": "title_block",
+                "title": "Annual Report",
+                "subtitle": "Q4",
+                "author": "Team",
+            },
             {"type": "toc", "title": "Índice", "max_level": 3, "page_break": False},
             {"type": "heading", "level": 1, "text": "Summary"},
             {
