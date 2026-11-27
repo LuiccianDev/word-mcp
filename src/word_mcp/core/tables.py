@@ -23,6 +23,9 @@ TableShading = list[list[str | None]]
 MAX_TABLE_ROWS = 5_000
 MAX_TABLE_COLS = 100
 MAX_TABLE_CELLS = 50_000
+MAX_TABLE_ROW_LIMIT = 100
+MAX_TABLE_CELL_CHARS = 500
+MAX_BULK_TABLE_ROWS_TOTAL = 200
 
 
 def validate_table_dimensions(rows: int, cols: int) -> None:
@@ -333,6 +336,62 @@ def _get_or_create_tc_borders(tc_properties: Any) -> Any:
     return borders
 
 
+def _bound_cell_text(text: str) -> tuple[str, bool]:
+    """Bound oversized cell text to protect LLM context windows."""
+    if len(text) <= MAX_TABLE_CELL_CHARS:
+        return text, False
+    return text[:MAX_TABLE_CELL_CHARS] + "...", True
+
+
+def _bound_row_cells(row: _Row) -> tuple[list[str], bool]:
+    """Extract bounded cell texts for one table row and report whether any cell was clipped."""
+    cells: list[str] = []
+    truncated = False
+    for cell in row.cells:
+        bounded, was_clipped = _bound_cell_text(cell.text)
+        truncated = truncated or was_clipped
+        cells.append(bounded)
+    return cells, truncated
+
+
+def _summarize_table(
+    idx: int,
+    table: Table,
+    *,
+    include_rows: bool,
+    offset: int,
+    effective_limit: int,
+) -> tuple[dict[str, Any], int]:
+    """Build bounded summary (and optional row slice) for a single table."""
+    row_count = len(table.rows)
+    col_count = len(table.columns) if row_count > 0 else 0
+    headers, cells_truncated = (
+        _bound_row_cells(table.rows[0]) if row_count > 0 else ([], False)
+    )
+    entry: dict[str, Any] = {
+        "table_index": idx,
+        "row_count": row_count,
+        "col_count": col_count,
+        "headers": headers,
+    }
+    rows_returned = 0
+    if include_rows:
+        start_row = min(offset, row_count)
+        end_row = min(row_count, start_row + effective_limit)
+        rows: list[list[str]] = []
+        for r in range(start_row, end_row):
+            row_cells, row_clipped = _bound_row_cells(table.rows[r])
+            cells_truncated = cells_truncated or row_clipped
+            rows.append(row_cells)
+        rows_returned = len(rows)
+        entry["rows"] = rows
+        entry["row_offset"] = offset
+        entry["truncated"] = end_row < row_count
+    if cells_truncated:
+        entry["cells_truncated"] = True
+    return entry, rows_returned
+
+
 def core_get_tables(
     doc: Document,
     table_index: int | None = None,
@@ -344,7 +403,7 @@ def core_get_tables(
     tables = doc.tables
     total_tables = len(tables)
     offset = max(0, int(row_offset))
-    limit = min(max(1, int(row_limit)), 100)
+    limit = min(max(1, int(row_limit)), MAX_TABLE_ROW_LIMIT)
 
     if table_index is not None:
         if table_index < 0 or table_index >= total_tables:
@@ -358,24 +417,20 @@ def core_get_tables(
         targets = list(enumerate(tables))
 
     summaries: list[dict[str, Any]] = []
+    remaining_bulk_rows = MAX_BULK_TABLE_ROWS_TOTAL
     for idx, table in targets:
-        row_count = len(table.rows)
-        col_count = len(table.columns) if row_count > 0 else 0
-        headers = [cell.text for cell in table.rows[0].cells] if row_count > 0 else []
-        entry: dict[str, Any] = {
-            "table_index": idx,
-            "row_count": row_count,
-            "col_count": col_count,
-            "headers": headers,
-        }
-        if include_rows:
-            end_row = min(row_count, offset + limit)
-            entry["rows"] = [
-                [cell.text for cell in table.rows[r].cells]
-                for r in range(min(offset, row_count), end_row)
-            ]
-            entry["row_offset"] = offset
-            entry["truncated"] = end_row < row_count
+        effective_limit = (
+            limit if table_index is not None else min(limit, remaining_bulk_rows)
+        )
+        entry, rows_returned = _summarize_table(
+            idx,
+            table,
+            include_rows=include_rows,
+            offset=offset,
+            effective_limit=effective_limit,
+        )
+        if include_rows and table_index is None:
+            remaining_bulk_rows = max(0, remaining_bulk_rows - rows_returned)
         summaries.append(entry)
 
     return {"total_tables": total_tables, "tables": summaries}

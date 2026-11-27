@@ -12,7 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - Rejected Win32 device prefixes, unauthorized UNC network paths, and Windows reserved DOS device names in `resolve_sandboxed_path` before filesystem resolution.
 - Added OOXML ZIP container entry count, uncompressed size, and compression ratio bounds in `_fast_check_ooxml_zip` to prevent ZIP bomb memory exhaustion.
-- Required `--allow-remote` before binding `--transport sse` to non-loopback hosts in `word_mcp.__main__`.
 - Enforced `WORD_MCP_DIRS` sandbox containment, symlink rejection, and 64 KiB size limits on `.protection` sidecar reads/deletes, and bounded PBKDF2 iterations (`100_000..2_000_000`).
 - Fixed empty-password (`""`) bypass in `core_verify_document_protection` and missing password checks in `remove_protection_info`, and rejected empty passwords in protection tools.
 - Connected `core_verify_signature` to `verify_document`, hashed paragraphs and table cells excluding the trailing signature block so tamper detection works end to end.
@@ -27,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enforced resource caps on table dimensions, batch elements, list nesting depth, and footnote `start_number`, and wired `font_name`/`font_size` in `customize_footnote_style`.
 - Preserved sibling run styling in `core_format_text`, supported cross-run and header/footer replacement with accurate counts in `core_find_and_replace_text`, and preserved multi-run formatting and interleaved table order in `core_merge_documents`.
 - Fixed Clark notation border replacement (`qn()`), duplicate `<w:shd>` removal, and unique bookmark `w:id` generation, updated `server.py` `instructions` for active `WORD_MCP_TOOLS` mode, and replaced `" | Pág. "` with `" | Page "`.
+
+### Changed
+- Compressed `server.instructions` and compound tool descriptions to reduce per-session MCP initialization token overhead.
+- Bounded `core_find_text` (match-centered context and 100-match cap with `truncated` flag), `core_read_range` (oversized single-paragraph truncation and 50,000-char upper cap), and `core_get_tables` (500-char cell cap and 200-row multi-table bulk cap).
+
+### Removed
+- Removed the legacy SSE transport and `--transport`, `--host`, `--port`, and `--allow-remote` CLI flags from `word_mcp.__main__`; the server now runs exclusively over local `stdio`.
 
 ---
 

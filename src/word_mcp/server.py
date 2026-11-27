@@ -21,84 +21,33 @@ def create_server() -> FastMCP:
 
     if tool_mode == "compound":
         tool_naming_section = (
-            "Active mode (`WORD_MCP_TOOLS=compound`, default): 9 tools are registered. "
-            "Prefer single-pass `build_document`, `create_from_markdown`, and `batch_add_content` "
-            "for document generation. For granular operations, use the 6 domain dispatchers "
-            "(`word_document`, `word_content`, `word_format`, `word_protection`, `word_footnote`, "
-            "`word_property`) and call `action='help'` with no `params` to discover every "
-            "action's required and optional schema in one round trip."
+            "Mode: `compound` (9 tools). Prefer single-pass `build_document`, "
+            "`create_from_markdown`, and `batch_add_content` for generation; "
+            "for large documents inspect with `word_document` actions (`outline`, "
+            "`read_range`, `get_tables`) and batch edits with `word_content` "
+            "(`batch_edit`). Pass args in `params`; call `action='help'` (no `params`) "
+            "to inspect all action schemas in one call."
         )
     else:
         tool_naming_section = (
-            "Active mode (`WORD_MCP_TOOLS=full`): 40 unprefixed tools are registered "
-            "(for example, `create_document`, `build_document`, `create_from_markdown`, "
-            "`batch_add_content`). Each tool is registered exactly once."
+            "Mode: `full` (40 unprefixed tools, registered once each). "
+            "Prefer `build_document`, `create_from_markdown`, and `batch_add_content`; "
+            "for large documents inspect with `get_document_outline` and "
+            "`find_text_in_document` before calling `get_document_text`."
         )
 
     mcp = FastMCP(
         name="word_mcp",
-        instructions=f"""# Word MCP Server
-
-Word MCP Server provides comprehensive Word document (.docx) manipulation capabilities for AI assistants.
-
-## Capabilities
-
-### Document Operations
-- **Create documents**: Generate new Word documents with optional metadata (title, author)
-- **Read documents**: Extract text, information, and structure from existing documents
-- **Copy documents**: Duplicate documents with automatic naming
-- **Merge documents**: Combine multiple documents into one
-- **Convert to PDF**: Export documents to PDF format
-
-### Content Management
-- **Add content**: Headings, paragraphs, tables, pictures, page breaks
-- **Search & replace**: Find and replace text throughout documents
-- **Delete content**: Remove paragraphs by index
-
-### Formatting
-- **Text formatting**: Bold, italic, underline, colors, font size, font family
-- **Custom styles**: Create reusable character and paragraph styles
-- **Table formatting**: Borders, shading, header rows
-
-### Footnotes & Endnotes
-- **Add footnotes**: Reference notes at page bottom
-- **Add endnotes**: Reference notes at document end
-- **Convert footnotes to endnotes**: Transform existing footnotes into endnotes (one-way)
-- **Customize styling**: Configure footnote/endnote appearance
-
-### Document Protection
-- **Password protection**: Encrypt documents with passwords
-- **Restricted editing**: Limit editing to specific sections
-- **Signature markers**: Add a visible signature block and a SHA-256 content hash
-- **Verification**: Check protection metadata and signature-marker status
-
-## Usage Patterns
-
-### Automation
-- Generate reports from templates
-- Batch process multiple documents
-- Extract data from existing documents
-- Apply consistent formatting across documents
-
-### Document Creation
-- Create new documents with structured content
-- Add tables with data
-- Insert images
-- Build tables of contents
-
-## Security
-
-- **ALLOWED DIRECTORIES:**
-  You are STRICTLY RESTRICTED to reading, creating, or modifying files ONLY within the following permitted directories:
-{dirs_list}
-
-  If the user asks to create or manipulate a document without specifying an absolute path, you MUST default to one of the above allowed directories.
-- Document protection encrypts the OOXML container with `msoffcrypto`
-- Signature markers detect text changes; they are not cryptographic signatures
-
-## Tool Naming
-
-{tool_naming_section}""",
+        instructions=(
+            "Word MCP Server (.docx manipulation over local stdio).\n"
+            f"- {tool_naming_section}\n"
+            "- Security: strictly restricted to these allowed directories "
+            "(default here when no absolute path is given):\n"
+            f"{dirs_list}\n"
+            "- Protection uses `msoffcrypto` encryption; signature markers store a "
+            "SHA-256 integrity hash (not a cryptographic signature). "
+            "Footnote-to-endnote conversion is one-way."
+        ),
         on_duplicate="error",
     )
 

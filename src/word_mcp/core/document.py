@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterator
 from re import Pattern
 from typing import Any
 
@@ -29,6 +30,12 @@ from word_mcp.core.styles import (
 from word_mcp.core.tables import copy_table
 from word_mcp.exception import ConfigurationError, DocumentProcessingError
 from word_mcp.utils.document_utils import ensure_docx_extension
+
+
+MAX_FIND_TEXT_MATCHES = 100
+FIND_TEXT_CONTEXT_BEFORE = 40
+FIND_TEXT_CONTEXT_AFTER = 60
+MAX_READ_RANGE_CHARS = 50_000
 
 
 def core_create_document(
@@ -283,13 +290,23 @@ def core_get_paragraph_text(doc: DocumentType, paragraph_index: int) -> dict[str
     }
 
 
+def _iter_searchable_elements(doc: DocumentType) -> Iterator[tuple[str, Any]]:
+    """Yield (location_label, element) pairs for paragraphs and table cells."""
+    for i, para in enumerate(doc.paragraphs):
+        yield f"Paragraph {i}", para
+    for t_idx, table in enumerate(doc.tables):
+        for r_idx, row in enumerate(table.rows):
+            for c_idx, cell in enumerate(row.cells):
+                yield f"Table {t_idx}, Row {r_idx}, Cell {c_idx}", cell
+
+
 def core_find_text(
     doc: DocumentType,
     text_to_find: str,
     match_case: bool = True,
     whole_word: bool = False,
 ) -> dict[str, Any]:
-    """Find all occurrences of specific text in a Word document.
+    """Find occurrences of specific text in a Word document with bounded output.
 
     Args:
         doc: The Word document object.
@@ -298,34 +315,28 @@ def core_find_text(
         whole_word: If True, matches whole words only.
 
     Returns:
-        A dictionary with search results.
+        A dictionary with bounded search results and total match count.
     """
     if not text_to_find:
         raise ValueError("Search text cannot be empty")
 
     search_pattern = _create_search_pattern(text_to_find, match_case, whole_word)
     all_occurrences: list[dict[str, Any]] = []
+    total_count = 0
 
-    # Search in paragraphs
-    for i, para in enumerate(doc.paragraphs):
-        location = f"Paragraph {i}"
-        all_occurrences.extend(_search_in_element(para, search_pattern, location))
-
-    # Search in tables
-    for t_idx, table in enumerate(doc.tables):
-        for r_idx, row in enumerate(table.rows):
-            for c_idx, cell in enumerate(row.cells):
-                location = f"Table {t_idx}, Row {r_idx}, Cell {c_idx}"
-                all_occurrences.extend(
-                    _search_in_element(cell, search_pattern, location)
-                )
+    for location, element in _iter_searchable_elements(doc):
+        remaining = MAX_FIND_TEXT_MATCHES - len(all_occurrences)
+        found, count = _search_in_element(element, search_pattern, location, remaining)
+        total_count += count
+        all_occurrences.extend(found)
 
     return {
         "query": text_to_find,
         "match_case": match_case,
         "whole_word": whole_word,
         "occurrences": all_occurrences,
-        "total_count": len(all_occurrences),
+        "total_count": total_count,
+        "truncated": total_count > len(all_occurrences),
     }
 
 
@@ -342,12 +353,26 @@ def _create_search_pattern(
 
 
 def _search_in_element(
-    element: Any, pattern: Pattern[str], location_prefix: str
-) -> list[dict[str, Any]]:
-    """Search for a pattern within a document element (paragraph or cell)."""
-    occurrences = []
-    for match in pattern.finditer(element.text):
-        context = element.text[:100] + ("..." if len(element.text) > 100 else "")
+    element: Any,
+    pattern: Pattern[str],
+    location_prefix: str,
+    max_collect: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Search for a pattern within an element, returning bounded match-centered hits and total count."""
+    text: str = element.text
+    if max_collect <= 0:
+        return [], sum(1 for _ in pattern.finditer(text))
+    occurrences: list[dict[str, Any]] = []
+    count = 0
+    for match in pattern.finditer(text):
+        count += 1
+        if len(occurrences) >= max_collect:
+            continue
+        start = max(0, match.start() - FIND_TEXT_CONTEXT_BEFORE)
+        end = min(len(text), match.end() + FIND_TEXT_CONTEXT_AFTER)
+        prefix = "..." if start > 0 else ""
+        suffix = "..." if end < len(text) else ""
+        context = f"{prefix}{text[start:end]}{suffix}"
         occurrences.append(
             {
                 "location": location_prefix,
@@ -356,7 +381,7 @@ def _search_in_element(
                 "context": context,
             }
         )
-    return occurrences
+    return occurrences, count
 
 
 def _heading_level(paragraph: Paragraph) -> int | None:
@@ -365,7 +390,29 @@ def _heading_level(paragraph: Paragraph) -> int | None:
     if style_name.startswith("Heading "):
         suffix = style_name.split(" ", 1)[1].strip()
         if suffix.isdigit():
-            return int(suffix)
+            level = int(suffix)
+            if 1 <= level <= 9:
+                return level
+    return None
+
+
+def _find_section_bounds(
+    paragraphs: list[Paragraph], section_heading: str
+) -> tuple[int, int] | None:
+    """Return (start_idx, end_idx) for the matching heading section, or None."""
+    needle = section_heading.strip().lower()
+    if not needle:
+        return None
+
+    total = len(paragraphs)
+    for idx, para in enumerate(paragraphs):
+        lvl = _heading_level(para)
+        if lvl is not None and needle in para.text.lower():
+            for end_idx in range(idx + 1, total):
+                next_lvl = _heading_level(paragraphs[end_idx])
+                if next_lvl is not None and next_lvl <= lvl:
+                    return idx, end_idx
+            return idx, total
     return None
 
 
@@ -379,39 +426,19 @@ def core_read_range(
     """Read a context-bounded range of paragraphs by index or heading section."""
     paragraphs = doc.paragraphs
     total = len(paragraphs)
-    char_budget = max(1, int(max_chars))
+    char_budget = min(max(1, int(max_chars)), MAX_READ_RANGE_CHARS)
     section_found: bool | None = None
 
     if section_heading is not None:
-        needle = section_heading.strip().lower()
-        sec_start: int | None = None
-        sec_level: int | None = None
-        for idx, para in enumerate(paragraphs):
-            lvl = _heading_level(para)
-            if lvl is not None and needle in para.text.lower():
-                sec_start = idx
-                sec_level = lvl
-                break
-
-        if sec_start is None:
-            return {
-                "paragraphs": [],
-                "total_paragraphs": total,
-                "returned_count": 0,
-                "truncated": False,
-                "next_index": None,
-                "section_found": False,
-            }
-
-        section_found = True
-        sec_end = total
-        for idx in range(sec_start + 1, total):
-            lvl = _heading_level(paragraphs[idx])
-            if lvl is not None and sec_level is not None and lvl <= sec_level:
-                sec_end = idx
-                break
-        slice_start = max(sec_start, start_index)
-        slice_end = sec_end if end_index is None else min(sec_end, end_index + 1)
+        bounds = _find_section_bounds(paragraphs, section_heading)
+        if bounds is None:
+            section_found = False
+            slice_start, slice_end = 0, 0
+        else:
+            section_found = True
+            sec_start, sec_end = bounds
+            slice_start = max(sec_start, start_index)
+            slice_end = sec_end if end_index is None else min(sec_end, end_index + 1)
     else:
         slice_start = max(0, start_index)
         slice_end = total if end_index is None else min(total, end_index + 1)
@@ -424,18 +451,19 @@ def core_read_range(
     for idx in range(slice_start, max(slice_start, slice_end)):
         para = paragraphs[idx]
         text = para.text
+        style_name = para.style.name if para.style else "Normal"
+        oversized_first = not collected and len(text) > char_budget
         if collected and used_chars + len(text) > char_budget:
             truncated = True
             next_index = idx
             break
-        used_chars += len(text)
-        collected.append(
-            {
-                "index": idx,
-                "text": text,
-                "style": para.style.name if para.style else "Normal",
-            }
-        )
+        entry_text = text[:char_budget] + "..." if oversized_first else text
+        used_chars += len(entry_text)
+        collected.append({"index": idx, "text": entry_text, "style": style_name})
+        if oversized_first:
+            truncated = True
+            next_index = idx + 1 if idx + 1 < slice_end else None
+            break
 
     result: dict[str, Any] = {
         "paragraphs": collected,

@@ -26,11 +26,8 @@
 Requires Astral [`uv`](https://docs.astral.sh/uv/). No repository clone or manual virtual environment is needed:
 
 ```bash
-# Default stdio transport for AI IDEs and desktop clients
+# Run over local stdio transport for AI IDEs and desktop clients
 uvx luiccian-word-mcp
-
-# Optional local SSE transport (loopback only unless --allow-remote is passed)
-uvx luiccian-word-mcp --transport sse --host 127.0.0.1 --port 8000
 ```
 
 ### 2. Configure Your MCP Client (Claude Desktop)
