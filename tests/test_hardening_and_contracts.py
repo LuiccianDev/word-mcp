@@ -368,14 +368,18 @@ async def test_compound_rich_help_required_signatures_aliases_and_bool_guard(
 async def test_thermos_edge_cases_batch_image_positional_dir_and_corrupt_verify(
     tmp_path: Path,
 ) -> None:
-    from word_mcp.tools.compound_tools import _GROUP_SPECS, _get_action_spec
+    from word_mcp.tools.compound_tools import (
+        _GROUP_SPECS,
+        _build_group_description,
+        _get_action_spec,
+    )
 
     for spec in _GROUP_SPECS:
-        action_spec = _get_action_spec(
-            spec.example_action, spec.actions[spec.example_action]
-        )
-        bound = action_spec.bind_and_validate(spec.name, spec.example_params)
-        assert bound
+        desc = _build_group_description(spec)
+        assert "action='help'" in desc
+        for action_name, handler in spec.actions.items():
+            action_spec = _get_action_spec(action_name, handler)
+            assert action_spec.to_help_dict()["description"]
 
     doc_path = tmp_path / "valid.docx"
     Document().save(doc_path)
@@ -673,15 +677,120 @@ async def test_core_format_search_replace_and_merge_preserve_structure(
     assert merged.paragraphs[0].runs[1].italic is True
 
 
-def test_cli_sse_rejects_non_loopback_without_allow_remote(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_cli_rejects_removed_sse_flags() -> None:
+    from word_mcp.__main__ import parse_args
+
+    parsed = parse_args([])
+    assert not hasattr(parsed, "transport")
+    assert not hasattr(parsed, "host")
+    assert not hasattr(parsed, "port")
+    assert not hasattr(parsed, "allow_remote")
+
+    for argv in (
+        ["--transport", "sse"],
+        ["--host", "127.0.0.1"],
+        ["--port", "8000"],
+        ["--allow-remote"],
+    ):
+        with pytest.raises(SystemExit):
+            parse_args(argv)
+
+
+def test_cli_main_runs_stdio_transport(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
+    import word_mcp.server as server_mod
     from word_mcp.__main__ import main
 
-    monkeypatch.setattr(
-        sys, "argv", ["luiccian-word-mcp", "--transport", "sse", "--host", "0.0.0.0"]
+    calls: list[dict[str, object]] = []
+
+    class _StubServer:
+        def run(self, **kwargs: object) -> None:
+            calls.append(kwargs)
+
+    monkeypatch.setattr(sys, "argv", ["luiccian-word-mcp"])
+    monkeypatch.setattr(server_mod, "create_server", lambda: _StubServer())
+
+    main()
+    assert calls == [{"transport": "stdio"}]
+
+
+def test_token_efficiency_bounds_for_search_read_and_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from word_mcp.core.document import (
+        MAX_FIND_TEXT_MATCHES,
+        MAX_READ_RANGE_CHARS,
+        core_find_text,
+        core_read_range,
     )
-    with pytest.raises(SystemExit, match="allow-remote"):
-        main()
+    from word_mcp.core.tables import (
+        MAX_BULK_TABLE_ROWS_TOTAL,
+        MAX_TABLE_CELL_CHARS,
+        core_get_tables,
+    )
+    from word_mcp.server import create_server
+
+    monkeypatch.setenv("WORD_MCP_TOOLS", "full")
+    full_instructions = create_server().instructions or ""
+    assert "get_document_outline" in full_instructions
+    assert "read_range" not in full_instructions
+    assert "get_tables" not in full_instructions
+    assert "batch_edit" not in full_instructions
+
+    doc = Document()
+    # Match far past index 100 verifies match-centered context
+    doc.add_paragraph("A" * 200 + "NEEDLE_TOKEN" + "B" * 200)
+    tbl = doc.add_table(rows=1, cols=1)
+    tbl.cell(0, 0).text = "C" * 150 + "TABLE_TOKEN" + "D" * 150
+    for _ in range(MAX_FIND_TEXT_MATCHES + 25):
+        doc.add_paragraph("repeat_hit")
+
+    found_center = core_find_text(doc, "NEEDLE_TOKEN")
+    assert found_center["total_count"] == 1
+    assert found_center["truncated"] is False
+    assert "NEEDLE_TOKEN" in found_center["occurrences"][0]["context"]
+    assert found_center["occurrences"][0]["context"].startswith("...")
+
+    found_table = core_find_text(doc, "TABLE_TOKEN")
+    assert found_table["total_count"] == 1
+    assert found_table["occurrences"][0]["location"] == "Table 0, Row 0, Cell 0"
+    assert "TABLE_TOKEN" in found_table["occurrences"][0]["context"]
+
+    found_capped = core_find_text(doc, "repeat_hit")
+    assert found_capped["total_count"] == MAX_FIND_TEXT_MATCHES + 25
+    assert len(found_capped["occurrences"]) == MAX_FIND_TEXT_MATCHES
+    assert found_capped["truncated"] is True
+
+    # Empty/whitespace section_heading returns section_found=False
+    empty_sec = core_read_range(doc, section_heading="   ")
+    assert empty_sec["section_found"] is False
+    assert empty_sec["returned_count"] == 0
+
+    # Single oversized first paragraph is truncated to max_chars and capped at MAX_READ_RANGE_CHARS
+    big_doc = Document()
+    big_doc.add_paragraph("X" * (MAX_READ_RANGE_CHARS + 100))
+    big_doc.add_paragraph("second")
+    ranged = core_read_range(big_doc, start_index=0, max_chars=120)
+    assert ranged["truncated"] is True
+    assert ranged["returned_count"] == 1
+    assert ranged["paragraphs"][0]["text"] == "X" * 120 + "..."
+    assert ranged["next_index"] == 1
+
+    ranged_ceiling = core_read_range(big_doc, start_index=0, max_chars=999_999)
+    assert ranged_ceiling["truncated"] is True
+    assert len(ranged_ceiling["paragraphs"][0]["text"]) == MAX_READ_RANGE_CHARS + 3
+
+    # Oversized table cell and multi-table bulk row budget are bounded
+    tbl_doc = Document()
+    for _ in range(4):
+        table = tbl_doc.add_table(rows=80, cols=1)
+        table.cell(0, 0).text = "H" * (MAX_TABLE_CELL_CHARS + 50)
+    tables_res = core_get_tables(
+        tbl_doc, table_index=None, include_rows=True, row_limit=100
+    )
+    assert tables_res["tables"][0]["cells_truncated"] is True
+    assert len(tables_res["tables"][0]["headers"][0]) == MAX_TABLE_CELL_CHARS + 3
+    total_returned_rows = sum(len(t["rows"]) for t in tables_res["tables"])
+    assert total_returned_rows == MAX_BULK_TABLE_ROWS_TOTAL
+    assert tables_res["tables"][-1]["truncated"] is True

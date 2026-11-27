@@ -37,7 +37,7 @@ By default (`./documents`) or via configuration, Word MCP limits document readin
 ### 3. Safe Subprocess, Link, and Transport Controls
 - Subprocess invocations (such as LibreOffice headless PDF conversion) use argument lists directly rather than `shell=True`, stage output inside a private `TemporaryDirectory`, and enforce execution timeouts.
 - `core_add_hyperlink` and inline markdown links allow only `http://`, `https://`, and `mailto:` URLs.
-- `--transport sse` binds only to loopback addresses (`127.0.0.1`, `localhost`, `::1`) unless `--allow-remote` is explicitly passed; SSE has no built-in authentication and must only be exposed behind an authenticated reverse proxy.
+- The server communicates exclusively over local `stdio` and opens no network ports.
 
 ### 4. Known Limitations
 - The `.protection` sidecar is advisory metadata. Microsoft Word does not enforce the `editable_sections` list.

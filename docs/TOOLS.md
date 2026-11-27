@@ -717,7 +717,7 @@ Search for text in a Word document and return matching locations.
 
 **Returns:**
 
-- dict: Returns `{"status", "search_results": {"query", "match_case", "whole_word", "occurrences", "total_count"}}` with `search_results`. Each occurrence has `location`, `position`, `match`, and `context`.
+- dict: Returns `{"status", "search_results": {"query", "match_case", "whole_word", "occurrences", "total_count", "truncated"}}` with `search_results`. Up to 100 occurrences are returned (`truncated` is `True` when `total_count > 100`); each occurrence has `location`, `position`, `match`, and a match-centered `context` snippet (`40` chars before, `60` chars after).
 
 ---
 
